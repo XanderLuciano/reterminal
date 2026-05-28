@@ -1,0 +1,52 @@
+esphome:
+  name: e1002-hello
+  friendly_name: "E1002 Hello"
+
+esp32:
+  board: seeed_xiao_esp32s3
+  framework:
+    type: arduino
+
+logger:
+  hardware_uart: UART0
+  level: INFO
+
+
+
+spi:
+  clk_pin: GPIO7
+  mosi_pin: GPIO9
+
+font:
+  - file: "gfonts://Inter@700"
+    id: font_large
+    size: 36
+  - file: "gfonts://Inter@500"
+    id: font_medium
+    size: 22
+  - file: "gfonts://Inter@400"
+    id: font_small
+    size: 16
+
+display:
+  - platform: epaper_spi
+    id: epaper
+    model: Seeed-reTerminal-E1002
+    update_interval: 300s
+    lambda: |-
+      it.fill(Color(255, 255, 255));
+      it.filled_rectangle(0, 0, 800, 80, Color(41, 98, 255));
+      it.printf(400, 20, id(font_large), Color(255, 255, 255),
+                TextAlign::TOP_CENTER, "Hello World!");
+      it.printf(400, 55, id(font_small), Color(200, 220, 255),
+                TextAlign::TOP_CENTER, "Seeed reTerminal E1002");
+
+      it.filled_rectangle(50, 120, 100, 60, Color(255, 59, 48));
+      it.filled_rectangle(170, 120, 100, 60, Color(255, 149, 0));
+      it.filled_rectangle(290, 120, 100, 60, Color(255, 204, 0));
+      it.filled_rectangle(410, 120, 100, 60, Color(52, 199, 89));
+      it.filled_rectangle(530, 120, 100, 60, Color(0, 122, 255));
+      it.filled_rectangle(650, 120, 100, 60, Color(175, 82, 222));
+
+      it.printf(400, 400, id(font_medium), Color(80, 80, 80),
+                TextAlign::BOTTOM_CENTER, "Glitch says hi!");

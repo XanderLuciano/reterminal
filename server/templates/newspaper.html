@@ -1,0 +1,464 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap');
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    width: 800px;
+    height: 480px;
+    font-family: 'Inter', system-ui, sans-serif;
+    background: #faf8f5;
+    color: #1a1a1a;
+    overflow: hidden;
+    padding: 18px 22px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+  }
+
+  /* ===== MASTHEAD ===== */
+  .masthead {
+    text-align: center;
+    border-bottom: 2px solid #1a1a1a;
+    border-top: 4px double #1a1a1a;
+    padding: 4px 0 6px;
+    margin-bottom: 8px;
+  }
+
+  .masthead-title {
+    font-family: 'Playfair Display', serif;
+    font-size: 26px;
+    font-weight: 900;
+    letter-spacing: 2px;
+    color: #1a1a1a;
+    text-transform: uppercase;
+  }
+
+  .masthead-date {
+    font-size: 11px;
+    font-weight: 500;
+    color: #555;
+    letter-spacing: 0.5px;
+    margin-top: 0px;
+  }
+
+  .masthead-sep {
+    display: inline-block;
+    margin: 0 6px;
+    color: #bbb;
+  }
+
+  /* ===== CONTENT ===== */
+  .content {
+    display: grid;
+    grid-template-columns: 1fr 280px;
+    grid-template-rows: auto 1fr auto;
+    gap: 8px 14px;
+    flex: 1;
+    min-height: 0;
+  }
+
+  /* ===== LEAD STORY ===== */
+  .lead-story {
+    grid-column: 1;
+    grid-row: 1 / 3;
+    border: 1.5px solid #1a1a1a;
+    background: #fffef9;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .lead-header {
+    padding: 10px 12px 0;
+  }
+
+  .lead-label {
+    font-size: 8px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    color: #888;
+    margin-bottom: 3px;
+  }
+
+  .lead-title {
+    font-family: 'Playfair Display', serif;
+    font-size: 20px;
+    font-weight: 900;
+    line-height: 1.15;
+    color: #1a1a1a;
+    margin-bottom: 4px;
+  }
+
+  .lead-detail {
+    font-size: 12px;
+    font-weight: 400;
+    color: #333;
+    line-height: 1.4;
+  }
+
+  /* Generated illustration block */
+  .lead-art {
+    flex: 1;
+    margin: 6px 10px 8px;
+    border: 1px solid #ddd;
+    background: #f5f2ec;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 70px;
+  }
+
+  .lead-art-text {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10px;
+    color: #aaa;
+    letter-spacing: 1px;
+  }
+
+  .lead-footer {
+    padding: 0 12px 8px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 10px;
+    color: #777;
+  }
+
+  .lead-sc {
+    font-size: 8px;
+    font-weight: 700;
+    letter-spacing: 1.5px;
+    color: #555;
+    text-transform: uppercase;
+    margin-right: 4px;
+  }
+
+  /* ===== SECOND STORY ===== */
+  .second-story {
+    grid-column: 1;
+    grid-row: 3;
+    border: 1px solid #ccc;
+    background: #fffef9;
+    padding: 8px 12px;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .second-label {
+    font-size: 8px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    color: #888;
+    margin-bottom: 3px;
+  }
+
+  .second-title {
+    font-family: 'Playfair Display', serif;
+    font-size: 16px;
+    font-weight: 900;
+    line-height: 1.15;
+    color: #1a1a1a;
+    margin-bottom: 3px;
+  }
+
+  .second-detail {
+    font-size: 11px;
+    font-weight: 400;
+    color: #444;
+    line-height: 1.4;
+    flex: 1;
+  }
+
+  .second-footer {
+    display: flex;
+    justify-content: space-between;
+    font-size: 9px;
+    color: #888;
+    margin-top: 4px;
+  }
+
+  /* ===== WEATHER BOX ===== */
+  .weather-box {
+    grid-column: 2;
+    grid-row: 1;
+    border: 1px solid #ccc;
+    padding: 8px 14px;
+    text-align: center;
+    background: #fffef9;
+  }
+
+  .weather-temp {
+    font-family: 'Playfair Display', serif;
+    font-size: 38px;
+    font-weight: 900;
+    line-height: 1;
+    color: #1a1a1a;
+  }
+
+  .weather-condition {
+    font-size: 12px;
+    font-weight: 600;
+    color: #555;
+    margin-top: 2px;
+  }
+
+  .weather-details {
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+    margin-top: 5px;
+    font-size: 11px;
+    font-weight: 500;
+    color: #666;
+  }
+
+  .sun-times {
+    font-size: 10px;
+    color: #888;
+    margin-top: 5px;
+  }
+
+  /* ===== AGENDA ===== */
+  .agenda {
+    grid-column: 2;
+    grid-row: 2;
+    padding-top: 4px;
+  }
+
+  .agenda-title {
+    font-size: 9px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    color: #888;
+    margin-bottom: 4px;
+  }
+
+  .agenda-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    padding: 3px 0;
+    font-size: 11px;
+    line-height: 1.3;
+  }
+
+  .agenda-text {
+    font-weight: 500;
+    color: #333;
+    flex: 1;
+    padding-right: 6px;
+  }
+
+  .agenda-time {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10px;
+    color: #777;
+    white-space: nowrap;
+  }
+
+  .agenda-divider {
+    border: none;
+    border-top: 1px solid #ddd;
+    margin: 5px 0;
+  }
+
+  /* ===== BY THE NUMBERS ===== */
+  .numbers {
+    grid-column: 2;
+    grid-row: 3;
+    align-self: end;
+  }
+
+  .numbers-title {
+    font-size: 9px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    color: #888;
+    margin-bottom: 2px;
+    border-top: 1px solid #ccc;
+    padding-top: 5px;
+  }
+
+  .numbers-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 2px 0;
+    font-size: 11px;
+  }
+
+  .numbers-label {
+    color: #555;
+    font-weight: 500;
+  }
+
+  .numbers-val {
+    font-family: 'IBM Plex Mono', monospace;
+    font-weight: 600;
+    color: #1a1a1a;
+    font-size: 11px;
+  }
+
+  .reno-bar {
+    width: 100%;
+    height: 6px;
+    background: #e0dcd5;
+    margin: 4px 0 2px;
+  }
+
+  .reno-fill {
+    height: 100%;
+    background: #1a1a1a;
+  }
+
+  /* ===== FOOTER ===== */
+  .footer {
+    border-top: 1px solid #1a1a1a;
+    padding-top: 5px;
+    margin-top: 4px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 9px;
+    font-weight: 600;
+    color: #888;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+
+  .footer-dot {
+    display: inline-block;
+    width: 4px;
+    height: 4px;
+    background: #999;
+    margin-right: 4px;
+  }
+
+  .battery {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10px;
+    font-weight: 600;
+    color: #555;
+  }
+
+  .battery-low { color: #ff0000; }
+  .battery-ok  { color: #555; }
+  .battery-full { color: #00aa00; }
+</style>
+</head>
+<body>
+
+<!-- Masthead -->
+<div class="masthead">
+  <div class="masthead-title">The Daily Glitch</div>
+  <div class="masthead-date">
+    {{ date_long }}
+    <span class="masthead-sep">·</span>
+    Moorpark, CA
+    <span class="masthead-sep">·</span>
+    Vol. I, No. {{ issue_number }}
+  </div>
+</div>
+
+<!-- Content Grid -->
+<div class="content">
+
+  <!-- Lead Story -->
+  <div class="lead-story">
+    <div class="lead-header">
+      <div class="lead-label">▲ {{ lead_story.time }}</div>
+      <div class="lead-title">{{ lead_story.title }}</div>
+      <div class="lead-detail">{{ lead_story.detail }}</div>
+    </div>
+
+    <!-- Generated illustration placeholder -->
+    <div class="lead-art">
+      <span class="lead-art-text">— e-paper · section A1 · wireless refresh test —</span>
+    </div>
+
+    <div class="lead-footer">
+      <span>
+        <span class="lead-sc">{{ lead_story.time }}</span>
+        {{ lead_story.meta }}
+      </span>
+    </div>
+  </div>
+
+  {% if second_story %}
+  <!-- Second Story -->
+  <div class="second-story">
+    <div class="second-label">▪ {{ second_story.time }}</div>
+    <div class="second-title">{{ second_story.title }}</div>
+    <div class="second-detail">{{ second_story.detail }}</div>
+    <div class="second-footer">
+      <span>{{ second_story.meta }}</span>
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- Weather -->
+  <div class="weather-box">
+    <div class="weather-temp">{{ weather.temp }}°</div>
+    <div class="weather-condition">{{ weather.description }}</div>
+    <div class="weather-details">
+      <span>Hum {{ weather.humidity }}%</span>
+      <span>Wind {{ weather.wind }}</span>
+      <span>Pol {{ weather.pollen }}</span>
+    </div>
+    <div class="sun-times">
+      ↑ {{ weather.sunrise }} &nbsp; ↓ {{ weather.sunset }} &nbsp; · &nbsp; Feels {{ weather.feels_like }}°
+    </div>
+  </div>
+
+  <!-- Agenda -->
+  <div class="agenda">
+    <div class="agenda-title">Today's Agenda</div>
+    {% for r in reminders %}
+    <div class="agenda-item">
+      <span class="agenda-text">{{ r.text }}</span>
+      <span class="agenda-time">{{ r.time }}</span>
+    </div>
+    {% endfor %}
+  </div>
+
+  <!-- By the Numbers -->
+  <div class="numbers">
+    <div class="numbers-title">By the Numbers</div>
+    <div class="numbers-row">
+      <span class="numbers-label">OpenClaw tokens today</span>
+      <span class="numbers-val">{{ stats.tokens }}</span>
+    </div>
+    <div class="numbers-row">
+      <span class="numbers-label">DeepSeek spend today</span>
+      <span class="numbers-val">{{ stats.deepseek_spend }}</span>
+    </div>
+    <div class="numbers-row">
+      <span class="numbers-label">Active agents</span>
+      <span class="numbers-val">{{ stats.active_agents }}</span>
+    </div>
+    <div class="numbers-row">
+      <span class="numbers-label">Kitchen renovation</span>
+      <span class="numbers-val">{{ stats.kitchen_reno }}%</span>
+    </div>
+    <div class="reno-bar"><div class="reno-fill" style="width:{{ stats.kitchen_reno }}%;"></div></div>
+  </div>
+
+</div>
+
+<!-- Footer -->
+<div class="footer">
+  <span><span class="footer-dot"></span> NUC online</span>
+  <span><span class="footer-dot"></span> Pi-Hole {{ stats.pihole_blocked }} blocked</span>
+  <span>Updated {{ updated_at }}</span>
+  <span class="battery {% if battery is string %}{% else %}{% if battery|int >= 80 %}battery-full{% elif battery|int >= 30 %}battery-ok{% else %}battery-low{% endif %}{% endif %}">🔋 {{ battery }}{% if battery is not string %}%{% endif %}</span>
+</div>
+
+</body>
+</html>

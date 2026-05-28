@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=IBM+Plex+Mono:wght@500;600;700&display=swap');
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    width: 800px;
+    height: 480px;
+    font-family: 'Inter', system-ui, sans-serif;
+    background: #ffffff;
+    color: #111;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* ── Header ── */
+  .header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 18px 6px;
+    border-bottom: 2px solid #111;
+  }
+
+  .header-left {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+  }
+
+  .header-title {
+    font-size: 22px;
+    font-weight: 900;
+    letter-spacing: 0.5px;
+  }
+
+  .header-subtitle {
+    font-size: 10px;
+    font-weight: 600;
+    color: #666;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+  }
+
+  .status-summary {
+    display: flex;
+    gap: 12px;
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+
+  .status-dot {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 2px;
+    margin-right: 4px;
+  }
+
+  .status-dot.overdue { background: #ff0000; }
+  .status-dot.soon    { background: #ffff00; border: 1px solid #cc9900; }
+  .status-dot.good    { background: #00ff00; border: 1px solid #009900; }
+
+  /* ── Grid layout ── */
+  .grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: auto auto auto;
+    gap: 6px;
+    padding: 8px 14px;
+    flex: 1;
+  }
+
+  /* ── Section ── */
+  .section {
+    border: 1.5px solid #ccc;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 5px 8px;
+    background: #f5f5f5;
+    border-bottom: 1px solid #ddd;
+    font-size: 9px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    color: #555;
+  }
+
+  .section-items {
+    flex: 1;
+    padding: 3px 6px;
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+  }
+
+  /* ── Item row ── */
+  .item {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 4px 3px;
+    border-bottom: 1px solid #eee;
+  }
+
+  .item:last-child { border-bottom: none; }
+
+  /* Status pill */
+  .pill {
+    display: inline-block;
+    width: 28px;
+    height: 13px;
+    border-radius: 7px;
+    flex-shrink: 0;
+    position: relative;
+    border: 1.5px solid #333;
+  }
+
+  .pill.overdue { background: #ff0000; }
+  .pill.soon    { background: #ffff00; }
+  .pill.good    { background: #00ff00; }
+  .pill.info    { background: #ddd; border-color: #999; }
+
+  .pill-label {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 7px;
+    font-weight: 700;
+    color: #111;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    white-space: nowrap;
+  }
+
+  .pill.overdue .pill-label,
+  .pill.info .pill-label { color: #fff; }
+
+  /* Info area */
+  .item-info {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+  }
+
+  .item-name {
+    font-size: 12px;
+    font-weight: 700;
+    color: #111;
+    line-height: 1.2;
+  }
+
+  .item-meta {
+    font-size: 9px;
+    font-weight: 500;
+    color: #666;
+    line-height: 1.2;
+  }
+
+  .item-meta .overdue-text { color: #ff0000; font-weight: 700; }
+  .item-meta .soon-text    { color: #cc8800; font-weight: 600; }
+
+  /* Progress bar */
+  .item-bar {
+    flex-shrink: 0;
+    width: 60px;
+  }
+
+  .bar-track {
+    width: 100%;
+    height: 5px;
+    background: #e0dcd5;
+  }
+
+  .bar-fill {
+    height: 100%;
+  }
+
+  .bar-fill.overdue { background: #ff0000; width: 100%; }
+  .bar-fill.soon    { background: #ffff00; }
+  .bar-fill.good    { background: #00ff00; }
+
+  .bar-pct {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 8px;
+    font-weight: 600;
+    text-align: right;
+    color: #888;
+    margin-top: 1px;
+  }
+
+  /* ── Footer ── */
+  .footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 6px 18px;
+    border-top: 1.5px solid #111;
+    font-size: 9px;
+    font-weight: 600;
+    color: #888;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+
+  .battery {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10px;
+    font-weight: 600;
+  }
+
+  .page-indicator {
+    font-size: 8px;
+    color: #aaa;
+  }
+</style>
+</head>
+<body>
+
+<!-- Header -->
+<div class="header">
+  <div class="header-left">
+    <span class="header-title">⚙ Maintenance</span>
+    <span class="header-subtitle">{{ location }}</span>
+  </div>
+  <div class="status-summary">
+    <span><span class="status-dot overdue"></span>{{ summary.overdue }} overdue</span>
+    <span><span class="status-dot soon"></span>{{ summary.soon }} due soon</span>
+    <span><span class="status-dot good"></span>{{ summary.good }} good</span>
+  </div>
+</div>
+
+<!-- Grid -->
+<div class="grid">
+
+  {% for section in sections %}
+  <div class="section">
+    <div class="section-header">
+      <span>{{ section.icon }} {{ section.name }}</span>
+      <span style="color:#999;">{{ section.interval_label }}</span>
+    </div>
+    <div class="section-items">
+      {% for item in section.tasks %}
+      <div class="item">
+        <!-- Status pill -->
+        <div class="pill {{ item.status }}">
+          <span class="pill-label">{{ item.status_label }}</span>
+        </div>
+
+        <!-- Name + meta -->
+        <div class="item-info">
+          <div class="item-name">{{ item.name }}</div>
+          <div class="item-meta">
+            Last: {{ item.last_done }}
+            {% if item.days_remaining is not none %}
+              · <span class="{% if item.days_remaining < 0 %}overdue-text{% elif item.status == 'soon' %}soon-text{% endif %}">
+                {% if item.days_remaining < 0 %}
+                  {{ -item.days_remaining }}d OVERDUE
+                {% elif item.days_remaining == 0 %}
+                  Due today
+                {% else %}
+                  {{ item.days_remaining }}d remaining
+                {% endif %}
+              </span>
+            {% endif %}
+          </div>
+        </div>
+
+        <!-- Progress bar -->
+        <div class="item-bar">
+          <div class="bar-track">
+            <div class="bar-fill {{ item.status }}" style="width: {{ item.bar_pct }}%;"></div>
+          </div>
+          <div class="bar-pct">{{ item.bar_pct }}%</div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endfor %}
+
+</div>
+
+<!-- Footer -->
+<div class="footer">
+  <span>Updated {{ updated_at }}</span>
+  <span class="page-indicator">Page 3/3 · Press ◀ ▶</span>
+  <span class="battery" style="color: {% if battery is string %}#555{% else %}{% if battery|int >= 80 %}#00aa00{% elif battery|int >= 30 %}#ff8800{% else %}#ff0000{% endif %}{% endif %};">
+    🔋 {{ battery }}{% if battery is not string %}%{% endif %}
+  </span>
+</div>
+
+</body>
+</html>

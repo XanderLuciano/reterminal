@@ -1,0 +1,282 @@
+#include <Arduino.h>
+#include <WiFi.h>
+#include <HTTPClient.h>
+#include <GxEPD2_7C.h>
+#include <NimBLEDevice.h>
+#include "wifi_config.h"
+const char* DASHBOARD_BASE_URL = "http://192.168.86.31:8088/dashboard.bin";
+const int NUM_PAGES = 3;
+const char* TEMPLATE_NAMES[] = {"newspaper", "weather", "maintenance"};
+const uint64_t DEEP_SLEEP_SECONDS = 600;
+const int ADVERTISE_TIMEOUT_S = 10;
+const int HEALTH_INTERVAL_HOURS = 3;
+const int SELECT_TIMEOUT_S = 30;
+#define BLE_DEVICE_NAME "E1002-Dashboard"
+#define SERVICE_UUID     "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+#define TRIGGER_UUID     "b2c3d4e5-f6a7-8901-bcde-f12345678901"
+
+// EPD pins
+#define EPD_SCK 7
+#define EPD_MOSI 9
+#define EPD_CS 10
+#define EPD_DC 11
+#define EPD_RES 12
+#define EPD_BUSY 13
+
+// Buttons
+#define BTN_LEFT  5
+#define BTN_RIGHT 4
+#define BTN_GREEN 3
+
+// Buzzer
+#define BUZZER_PIN 45
+
+// Battery
+#define BATT_ENABLE 21
+#define BATT_ADC    1
+
+GxEPD2_7C<GxEPD2_730c_GDEP073E01, GxEPD2_730c_GDEP073E01::HEIGHT>
+  display(GxEPD2_730c_GDEP073E01(EPD_CS, EPD_DC, EPD_RES, EPD_BUSY));
+SPIClass hspi(HSPI);
+
+const size_t FB_SIZE = (800UL * 480UL + 1) / 2;
+uint8_t* framebuf = nullptr;
+
+RTC_DATA_ATTR uint32_t rtc_sleep_cycles = 0;
+RTC_DATA_ATTR bool rtc_first_boot = true;
+RTC_DATA_ATTR int rtc_active_page = 0;
+volatile bool bleTriggered = false;
+
+class TriggerCallbacks : public NimBLECharacteristicCallbacks {
+  void onWrite(NimBLECharacteristic* pChar, NimBLEConnInfo& connInfo) override {
+    bleTriggered = true;
+  }
+};
+
+// ── Battery ──
+
+int readBatteryPercent() {
+  pinMode(BATT_ENABLE, OUTPUT);
+  digitalWrite(BATT_ENABLE, HIGH);
+  delay(50);  // let ADC stabilize
+  
+  // Read ADC (12-bit, 12dB attenuation ≈ 0–3.1V range)
+  int raw = analogRead(BATT_ADC);
+  delay(10);
+  raw += analogRead(BATT_ADC);  // average 2 readings
+  raw /= 2;
+  
+  digitalWrite(BATT_ENABLE, LOW);  // disable to save power
+  
+  // Voltage divider compensation: actual = pin * 2
+  float voltage = (float)raw / 4095.0 * 3.1 * 2.0;
+  
+  // Calibration from ESPHome cookbook (voltage → %)
+  if (voltage >= 4.15) return 100;
+  if (voltage >= 3.96) return 90;
+  if (voltage >= 3.91) return 80;
+  if (voltage >= 3.85) return 70;
+  if (voltage >= 3.80) return 60;
+  if (voltage >= 3.75) return 50;
+  if (voltage >= 3.68) return 40;
+  if (voltage >= 3.58) return 30;
+  if (voltage >= 3.49) return 20;
+  if (voltage >= 3.41) return 10;
+  if (voltage >= 3.30) return 5;
+  return 0;
+}
+
+// ── Buzzer ──
+
+void beepPage(int page) {
+  int count = page + 1;
+  for (int i = 0; i < count; i++) {
+    tone(BUZZER_PIN, 2200, 40);
+    delay(80);
+  }
+  delay(120);
+}
+
+void beepConfirm() {
+  tone(BUZZER_PIN, 1800, 60); delay(100);
+  tone(BUZZER_PIN, 2200, 60); delay(100);
+  tone(BUZZER_PIN, 2600, 60);
+}
+
+// ── WiFi & Fetch ──
+
+bool connectWiFi() {
+  if (WiFi.status() == WL_CONNECTED) return true;
+  WiFi.begin(WIFI_SSID, WIFI_PASS);
+  for (int i = 0; i < 40 && WiFi.status() != WL_CONNECTED; i++) delay(500);
+  return WiFi.status() == WL_CONNECTED;
+}
+
+bool fetchPage(int page, int batteryPct) {
+  framebuf = nullptr;
+  framebuf = (uint8_t*)ps_malloc(FB_SIZE);
+  if (!framebuf) return false;
+  
+  char url[256];
+  snprintf(url, sizeof(url), "%s?template=%s&battery=%d",
+           DASHBOARD_BASE_URL, TEMPLATE_NAMES[page], batteryPct);
+  
+  HTTPClient http; http.begin(url); http.setTimeout(30000);
+  if (http.GET() != 200) { http.end(); return false; }
+  
+  WiFiClient* stream = http.getStreamPtr();
+  size_t total = 0; unsigned long start = millis();
+  while (total < FB_SIZE && stream->connected() && millis() - start < 30000) {
+    if (stream->available()) {
+      size_t n = stream->available();
+      if (total + n > FB_SIZE) n = FB_SIZE - total;
+      total += stream->readBytes(framebuf + total, n);
+    }
+    delay(1);
+  }
+  http.end();
+  return total == FB_SIZE;
+}
+
+void showPage(int page) {
+  if (!framebuf) return;
+  display.setFullWindow();
+  display.firstPage();
+  do { display.loadImageBuffer(framebuf, FB_SIZE); } while (display.nextPage());
+  rtc_active_page = page;
+  framebuf = nullptr;
+}
+
+// ── Button selection ──
+
+int selectPage(int currentPage) {
+  int selected = currentPage;
+  beepPage(selected);
+  
+  unsigned long start = millis();
+  while (millis() - start < SELECT_TIMEOUT_S * 1000UL) {
+    if (digitalRead(BTN_LEFT) == LOW) {
+      delay(20);
+      if (digitalRead(BTN_LEFT) == LOW) {
+        selected = (selected - 1 + NUM_PAGES) % NUM_PAGES;
+        beepPage(selected);
+        while (digitalRead(BTN_LEFT) == LOW) delay(10);
+        start = millis();
+      }
+    }
+    if (digitalRead(BTN_RIGHT) == LOW) {
+      delay(20);
+      if (digitalRead(BTN_RIGHT) == LOW) {
+        selected = (selected + 1) % NUM_PAGES;
+        beepPage(selected);
+        while (digitalRead(BTN_RIGHT) == LOW) delay(10);
+        start = millis();
+      }
+    }
+    if (digitalRead(BTN_GREEN) == LOW) {
+      delay(20);
+      if (digitalRead(BTN_GREEN) == LOW) {
+        beepConfirm();
+        while (digitalRead(BTN_GREEN) == LOW) delay(10);
+        return selected;
+      }
+    }
+    delay(30);
+  }
+  return -1;
+}
+
+// ── BLE ──
+
+void startBLE() {
+  NimBLEDevice::init(BLE_DEVICE_NAME);
+  NimBLEDevice::setPower(ESP_PWR_LVL_P9);
+  NimBLEServer* pServer = NimBLEDevice::createServer();
+  NimBLEService* pService = pServer->createService(SERVICE_UUID);
+  NimBLECharacteristic* pTrigger = pService->createCharacteristic(TRIGGER_UUID, NIMBLE_PROPERTY::WRITE);
+  pTrigger->setCallbacks(new TriggerCallbacks());
+  NimBLEAdvertising* pAdv = NimBLEDevice::getAdvertising();
+  pAdv->addServiceUUID(SERVICE_UUID);
+  pAdv->setMinInterval(32);
+  pAdv->setMaxInterval(64);
+  NimBLEAdvertisementData scanResp;
+  scanResp.setName(BLE_DEVICE_NAME);
+  pAdv->setScanResponseData(scanResp);
+  pAdv->start();
+}
+
+// ── Core flow ──
+
+void refreshAndShow(int page) {
+  if (!connectWiFi()) return;
+  int battery = readBatteryPercent();
+  if (!fetchPage(page, battery)) { WiFi.disconnect(true); return; }
+  WiFi.disconnect(true);
+  showPage(page);
+  rtc_sleep_cycles = 0;
+}
+
+void goDeepSleep() {
+  Serial0.flush();
+  esp_sleep_enable_timer_wakeup(DEEP_SLEEP_SECONDS * 1000000ULL);
+  esp_sleep_enable_ext1_wakeup(
+    (1ULL << BTN_LEFT) | (1ULL << BTN_RIGHT) | (1ULL << BTN_GREEN),
+    ESP_EXT1_WAKEUP_ANY_LOW
+  );
+  esp_deep_sleep_start();
+}
+
+void setup() {
+  Serial0.begin(115200); delay(100);
+  
+  pinMode(EPD_RES, OUTPUT); pinMode(EPD_DC, OUTPUT); pinMode(EPD_CS, OUTPUT);
+  hspi.begin(EPD_SCK, -1, EPD_MOSI, -1);
+  display.epd2.selectSPI(hspi, SPISettings(2000000, MSBFIRST, SPI_MODE0));
+
+  pinMode(BTN_LEFT, INPUT_PULLUP);
+  pinMode(BTN_RIGHT, INPUT_PULLUP);
+  pinMode(BTN_GREEN, INPUT_PULLUP);
+
+  esp_sleep_wakeup_cause_t wakeCause = esp_sleep_get_wakeup_cause();
+  bool btnWake = (wakeCause == ESP_SLEEP_WAKEUP_EXT1);
+
+  if (rtc_first_boot) {
+    rtc_first_boot = false; rtc_sleep_cycles = 0;
+    display.init(0);
+    display.setFullWindow();
+    display.firstPage();
+    do { display.fillScreen(GxEPD_WHITE); display.setCursor(30, 220); display.print("E1002 Dashboard"); } while (display.nextPage());
+    delay(500);
+    refreshAndShow(0);
+    goDeepSleep();
+    return;
+  }
+
+  rtc_sleep_cycles++;
+
+  if (btnWake) {
+    int chosen = selectPage(rtc_active_page);
+    if (chosen >= 0) refreshAndShow(chosen);
+    goDeepSleep();
+    return;
+  }
+
+  uint32_t healthCycles = (HEALTH_INTERVAL_HOURS * 3600) / DEEP_SLEEP_SECONDS;
+  if (rtc_sleep_cycles >= healthCycles) {
+    refreshAndShow(rtc_active_page);
+    goDeepSleep();
+    return;
+  }
+
+  bleTriggered = false;
+  startBLE();
+  unsigned long adStart = millis();
+  while (!bleTriggered && (millis() - adStart) < ADVERTISE_TIMEOUT_S * 1000UL) delay(50);
+  NimBLEDevice::deinit(true);
+  delay(200);
+
+  if (bleTriggered) refreshAndShow(rtc_active_page);
+  goDeepSleep();
+}
+
+void loop() {}

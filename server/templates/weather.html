@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=Inter:wght@400;500;600;700;800;900&family=IBM+Plex+Mono:wght@500;600;700&display=swap');
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    width: 800px;
+    height: 480px;
+    font-family: 'Inter', system-ui, sans-serif;
+    background: #ffffff;
+    color: #111;
+    overflow: hidden;
+  }
+
+  /* Full-color header with gradient-like color blocks */
+  .header {
+    height: 72px;
+    display: flex;
+    align-items: center;
+    padding: 0 22px;
+    border-bottom: 3px solid #111;
+    position: relative;
+    background: #fff;
+  }
+
+  .header-title {
+    font-family: 'Playfair Display', serif;
+    font-size: 28px;
+    font-weight: 900;
+    color: #111;
+    letter-spacing: 1px;
+    z-index: 1;
+  }
+
+  .header-subtitle {
+    font-size: 11px;
+    font-weight: 600;
+    color: #555;
+    margin-left: 12px;
+    z-index: 1;
+  }
+
+  /* Color accent bars under header */
+  .color-bars {
+    display: flex;
+    height: 6px;
+  }
+  .color-bars div { flex: 1; }
+  .cb-red    { background: #ff0000; }
+  .cb-orange { background: #ff8800; }
+  .cb-yellow { background: #ffff00; }
+  .cb-green  { background: #00ff00; }
+  .cb-blue   { background: #0000ff; }
+  .cb-purple { background: #8800ff; }
+
+  /* Main grid */
+  .grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr 1fr;
+    grid-template-rows: auto auto auto auto;
+    gap: 8px;
+    padding: 10px 14px;
+    height: calc(480px - 72px - 6px);
+  }
+
+  /* Current temp - spans full top */
+  .current {
+    grid-column: 1 / -1;
+    grid-row: 1;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding-bottom: 2px;
+  }
+
+  .current-temp {
+    font-family: 'Inter', sans-serif;
+    font-size: 84px;
+    font-weight: 900;
+    line-height: 1;
+    letter-spacing: -3px;
+  }
+
+  .current-detail {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .current-feels {
+    font-size: 16px;
+    font-weight: 600;
+    color: #444;
+  }
+
+  .current-sky {
+    font-size: 22px;
+    font-weight: 700;
+  }
+
+  .current-hilo {
+    font-size: 13px;
+    font-weight: 600;
+    color: #666;
+    margin-top: 2px;
+  }
+
+  /* Colorful stat cards */
+  .stat-card {
+    border: 2px solid #111;
+    padding: 8px 10px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    text-align: center;
+  }
+
+  .stat-label {
+    font-size: 9px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    margin-bottom: 3px;
+  }
+
+  .stat-value {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 26px;
+    font-weight: 700;
+  }
+
+  .stat-unit {
+    font-size: 11px;
+    font-weight: 600;
+    margin-top: 1px;
+  }
+
+  /* Sunrise / Sunset */
+  .sun-card {
+    border: 2px solid #111;
+    padding: 8px 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
+
+  .sun-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 13px;
+    font-weight: 600;
+  }
+
+  .sun-bar {
+    width: 100%;
+    height: 8px;
+    background: #e0dcd5;
+    position: relative;
+    margin: 2px 0;
+  }
+
+  .sun-fill {
+    height: 100%;
+    position: absolute;
+  }
+
+  .sun-label {
+    font-size: 10px;
+    font-weight: 600;
+    color: #444;
+  }
+
+  /* Forecast strip */
+  .forecast {
+    grid-column: 1 / -1;
+    display: flex;
+    gap: 4px;
+    align-items: stretch;
+  }
+
+  .fc-day {
+    flex: 1;
+    border: 1.5px solid #ccc;
+    padding: 5px 4px;
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+  }
+
+  .fc-name {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  .fc-icon {
+    font-size: 20px;
+    line-height: 1;
+    margin: 2px 0;
+  }
+
+  .fc-hi {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 14px;
+    font-weight: 700;
+  }
+
+  .fc-lo {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    font-weight: 600;
+    color: #666;
+    margin-top: -1px;
+  }
+
+  /* Footer */
+  .footer {
+    grid-column: 1 / -1;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 9px;
+    font-weight: 600;
+    color: #888;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    border-top: 1.5px solid #111;
+    padding-top: 5px;
+    margin-top: 2px;
+  }
+
+  .battery {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10px;
+    font-weight: 600;
+  }
+
+  .page-indicator {
+    font-size: 9px;
+    font-weight: 700;
+    color: #555;
+    letter-spacing: 1.5px;
+  }
+</style>
+</head>
+<body>
+
+<!-- Header -->
+<div class="header">
+  <span class="header-title">🌤 Weather</span>
+  <span class="header-subtitle">{{ location }}</span>
+</div>
+
+<!-- Color accent bars — all 6 Spectra colors! -->
+<div class="color-bars">
+  <div class="cb-red"></div>
+  <div class="cb-yellow"></div>
+  <div class="cb-green"></div>
+  <div class="cb-blue"></div>
+</div>
+
+<div class="grid">
+
+  <!-- Current conditions -->
+  <div class="current">
+    <div class="current-temp" style="color: {{ current.temp_color }};">{{ current.temp }}°</div>
+    <div class="current-detail">
+      <div class="current-sky" style="color: {{ current.sky_color }};">{{ current.sky }}</div>
+      <div class="current-feels">Feels like {{ current.feels_like }}°</div>
+      <div class="current-hilo">
+        <span style="color: #ff0000;">▲{{ current.high }}°</span>
+        &nbsp;
+        <span style="color: #0000ff;">▼{{ current.low }}°</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Humidity — Blue theme -->
+  <div class="stat-card" style="border-color: #0000ff; background: #f0f4ff;">
+    <div class="stat-label" style="color: #0000ff;">💧 Humidity</div>
+    <div class="stat-value" style="color: #0000ff;">{{ current.humidity }}%</div>
+    <div class="stat-unit" style="color: #333;">{{ current.humidity_label }}</div>
+  </div>
+
+  <!-- Wind — Green theme -->
+  <div class="stat-card" style="border-color: #00aa00; background: #f0fff0;">
+    <div class="stat-label" style="color: #00aa00;">🌬 Wind</div>
+    <div class="stat-value" style="color: #00aa00;">{{ current.wind_speed }}</div>
+    <div class="stat-unit" style="color: #333;">mph {{ current.wind_dir }}</div>
+  </div>
+
+  <!-- UV Index — dynamic theme -->
+  <div class="stat-card" style="border-color: {{ current.uv_color }}; background: {{ current.uv_bg }};">
+    <div class="stat-label" style="color: {{ current.uv_color }};">☀ UV Index</div>
+    <div class="stat-value" style="color: {{ current.uv_color }};">{{ current.uv_index }}</div>
+    <div class="stat-unit" style="color: #333;">{{ current.uv_label }}</div>
+  </div>
+
+  <!-- AQI — EPA color scale -->
+  <div class="stat-card" style="border-color: {{ current.aqi_color }}; background: {{ current.aqi_bg }};">
+    <div class="stat-label" style="color: {{ current.aqi_color }};">🫁 AQI</div>
+    <div class="stat-value" style="color: {{ current.aqi_color }};">{{ current.aqi }}</div>
+    <div class="stat-unit" style="color: #333;">{{ current.aqi_label }} · {{ current.aqi_pollutant }}</div>
+  </div>
+
+  <!-- Sunrise / Sunset -->
+  <div class="sun-card" style="grid-column: 1 / -1;">
+    <div style="font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 1.5px; color: #888; margin-bottom: 2px;">🌅 Sun Schedule</div>
+    <div class="sun-row">
+      <span class="sun-label">↑ Sunrise</span>
+      <span style="font-weight: 700;">{{ current.sunrise }}</span>
+    </div>
+    <div class="sun-bar">
+      <div class="sun-fill" style="width: {{ current.daylight_pct }}%; background: linear-gradient(90deg, #ff8800, #ffff00, #00aaff);"></div>
+    </div>
+    <div class="sun-row">
+      <span class="sun-label">↓ Sunset</span>
+      <span style="font-weight: 700;">{{ current.sunset }}</span>
+    </div>
+    <div style="text-align: center; font-size: 10px; color: #666; margin-top: 2px;">{{ current.daylight_hours }} daylight</div>
+  </div>
+
+  <!-- 5-day forecast -->
+  <div class="forecast">
+    {% for day in forecast %}
+    <div class="fc-day">
+      <div class="fc-name">{{ day.name }}</div>
+      <div class="fc-icon">{{ day.icon }}</div>
+      <div class="fc-hi" style="color: #ff0000;">{{ day.high }}°</div>
+      <div class="fc-lo" style="color: #0000ff;">{{ day.low }}°</div>
+    </div>
+    {% endfor %}
+  </div>
+
+  <!-- Footer -->
+  <div class="footer">
+    <span>Updated {{ updated_at }}</span>
+    <span class="page-indicator">Page 2/2 · Press ◀ ▶ to switch</span>
+    <span class="battery" style="color: {% if battery == "—" %}#555{% elif battery|int >= 80 %}#00aa00{% elif battery|int >= 30 %}#ff8800{% else %}#ff0000{% endif %};">🔋 {{ battery }}%</span>
+    <span>The Daily Glitch</span>
+  </div>
+
+</div>
+
+</body>
+</html>

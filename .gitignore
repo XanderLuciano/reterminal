@@ -1,0 +1,26 @@
+# ── Secrets (never commit) ──
+wifi_config.h
+secrets.yaml
+*.env
+
+# ── Python ──
+__pycache__/
+*.pyc
+*.pyo
+
+# ── ESPHome ──
+/.esphome/
+
+# ── PlatformIO ──
+.pio/
+pio-test/
+
+# ── Server generated/cache ──
+server/weather_cache.json
+server/*.png
+server/*.jpg
+
+# ── OS junk ──
+.DS_Store
+Thumbs.db
+*~

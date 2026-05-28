@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;800&display=swap');
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    width: 800px;
+    height: 480px;
+    font-family: 'Inter', system-ui, sans-serif;
+    background: #f8f9fa;
+    color: #1a1a2e;
+    overflow: hidden;
+    display: grid;
+    grid-template-columns: 260px 1fr;
+    grid-template-rows: 1fr;
+    gap: 0;
+  }
+
+  /* --- Sidebar --- */
+  .sidebar {
+    background: linear-gradient(180deg, #1a1a2e 0%, #16213e 100%);
+    color: #e8e8e8;
+    padding: 24px 20px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+  }
+
+  .time-section {
+    text-align: center;
+  }
+
+  .time {
+    font-size: 42px;
+    font-weight: 800;
+    letter-spacing: -1px;
+    color: #ffffff;
+  }
+
+  .date {
+    font-size: 15px;
+    font-weight: 400;
+    color: #8892b0;
+    margin-top: 2px;
+  }
+
+  .weather-section {
+    text-align: center;
+    margin: 16px 0;
+  }
+
+  .weather-icon {
+    font-size: 48px;
+    margin-bottom: 4px;
+  }
+
+  .weather-temp {
+    font-size: 36px;
+    font-weight: 700;
+    color: #ffffff;
+  }
+
+  .weather-desc {
+    font-size: 13px;
+    color: #8892b0;
+  }
+
+  .weather-detail {
+    font-size: 11px;
+    color: #5a6a8a;
+    margin-top: 2px;
+  }
+
+  .sidebar-stats {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .stat-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 6px 10px;
+    background: rgba(255,255,255,0.06);
+    border-radius: 8px;
+    font-size: 12px;
+  }
+
+  .stat-label {
+    color: #8892b0;
+  }
+
+  .stat-value {
+    font-weight: 600;
+    color: #e8e8e8;
+  }
+
+  .stat-value.good { color: #4ecca3; }
+  .stat-value.warn { color: #ffd369; }
+  .stat-value.bad  { color: #ff6b6b; }
+
+  /* --- Main Content --- */
+  .main {
+    padding: 24px 28px;
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+    overflow: hidden;
+  }
+
+  .section-title {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    color: #6c7a89;
+    margin-bottom: 8px;
+  }
+
+  .reminders {
+    flex-shrink: 0;
+  }
+
+  .reminder-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 12px;
+    background: #ffffff;
+    border: 1px solid #e8ecf1;
+    border-radius: 10px;
+    margin-bottom: 6px;
+    font-size: 13px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+  }
+
+  .reminder-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  .reminder-dot.urgent { background: #ff6b6b; }
+  .reminder-dot.soon   { background: #ffd369; }
+  .reminder-dot.later  { background: #4ecca3; }
+
+  .reminder-text { flex: 1; font-weight: 500; }
+  .reminder-time { font-size: 11px; color: #8892b0; }
+
+  .stats-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+  }
+
+  .stat-card {
+    background: #ffffff;
+    border: 1px solid #e8ecf1;
+    border-radius: 10px;
+    padding: 14px 16px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .stat-card .card-icon {
+    font-size: 18px;
+    margin-bottom: 2px;
+  }
+
+  .stat-card .card-value {
+    font-size: 22px;
+    font-weight: 700;
+  }
+
+  .stat-card .card-label {
+    font-size: 11px;
+    color: #8892b0;
+    font-weight: 500;
+  }
+
+  .status-bar {
+    margin-top: auto;
+    padding: 10px 16px;
+    background: #1a1a2e;
+    border-radius: 10px;
+    color: #e8e8e8;
+    font-size: 11px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .status-dot {
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    margin-right: 4px;
+  }
+
+  .status-dot.online { background: #4ecca3; }
+  .status-dot.idle   { background: #ffd369; }
+</style>
+</head>
+<body>
+
+<!-- Sidebar -->
+<div class="sidebar">
+  <div>
+    <div class="time-section">
+      <div class="time">{{ time }}</div>
+      <div class="date">{{ date }}</div>
+    </div>
+
+    <div class="weather-section">
+      <div class="weather-icon">{{ weather.icon }}</div>
+      <div class="weather-temp">{{ weather.temp }}°</div>
+      <div class="weather-desc">{{ weather.description }}</div>
+      <div class="weather-detail">
+        💧 {{ weather.humidity }}% &nbsp; 🌬 {{ weather.wind }}mph
+        {% if weather.pollen %}
+        &nbsp; 🌿 {{ weather.pollen }}
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <div class="sidebar-stats">
+    <div class="stat-row">
+      <span class="stat-label">🌅 Sunrise</span>
+      <span class="stat-value">{{ weather.sunrise }}</span>
+    </div>
+    <div class="stat-row">
+      <span class="stat-label">🌇 Sunset</span>
+      <span class="stat-value">{{ weather.sunset }}</span>
+    </div>
+    <div class="stat-row">
+      <span class="stat-label">🌿 Pollen</span>
+      <span class="stat-value {{ weather.pollen_level }}">{{ weather.pollen_index }}</span>
+    </div>
+    <div class="stat-row">
+      <span class="stat-label">🌡 Feels like</span>
+      <span class="stat-value">{{ weather.feels_like }}°</span>
+    </div>
+  </div>
+</div>
+
+<!-- Main -->
+<div class="main">
+  <div class="reminders">
+    <div class="section-title">📋 Reminders</div>
+    {% for r in reminders %}
+    <div class="reminder-item">
+      <div class="reminder-dot {{ r.priority }}"></div>
+      <span class="reminder-text">{{ r.text }}</span>
+      <span class="reminder-time">{{ r.time }}</span>
+    </div>
+    {% endfor %}
+  </div>
+
+  <div class="stats-grid">
+    {% for card in cards %}
+    <div class="stat-card">
+      <div class="card-icon">{{ card.icon }}</div>
+      <div class="card-value">{{ card.value }}</div>
+      <div class="card-label">{{ card.label }}</div>
+    </div>
+    {% endfor %}
+  </div>
+
+  <div class="status-bar">
+    <span><span class="status-dot online"></span> {{ status.line1 }}</span>
+    <span>{{ status.line2 }}</span>
+    <span>{{ status.line3 }}</span>
+  </div>
+</div>
+
+</body>
+</html>

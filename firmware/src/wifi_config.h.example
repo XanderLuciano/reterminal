@@ -1,0 +1,6 @@
+// wifi_config.h — Copy to wifi_config.h and fill in your credentials
+// This file is a template. wifi_config.h is gitignored.
+#pragma once
+
+#define WIFI_SSID "YourWiFiNetwork"
+#define WIFI_PASS "YourWiFiPassword"
