@@ -61,6 +61,7 @@ Pinout is identical for both devices. Same ESP32-S3 chip.
 | What you want to change | Where to go |
 |---|---|
 | Display content, layout, design | `server/templates/*.html` (shared between both displays) |
+| Pin mappings, IO, BMS, charger, sensor details | `HARDWARE.md` — **always update this** when you discover or change hardware info |
 | Mock data, news headlines, reminders | `server/server.py` → `get_mock_context()` |
 | Weather data | `server/weather_provider.py` |
 | Color dithering (E1002) | `server/renderer.py` → `dither_spectra6()`, `pack_nibbles()` |
@@ -77,6 +78,10 @@ Pinout is identical for both devices. Same ESP32-S3 chip.
 - `server/__pycache__/` — Python cache
 - `pio-test/` — legacy
 - `firmware/src/wifi_config.h` — local secrets file
+
+### MUST maintain
+
+- **`HARDWARE.md`** — the canonical hardware IO reference. Any time you discover a new pin, peripheral, register, sensor address, or power detail, update this file. It's the source of truth for all hardware knowledge discovered about these devices. Do NOT let it go stale.
 
 ---
 
