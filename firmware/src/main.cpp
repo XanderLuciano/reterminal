@@ -2,6 +2,7 @@
 #include <WiFi.h>
 #include <HTTPClient.h>
 #include <NimBLEDevice.h>
+#include <Wire.h>
 #include "wifi_config.h"
 
 #ifdef E1002_VARIANT
@@ -34,9 +35,18 @@ const int SELECT_TIMEOUT_S = 30;
 // Buzzer
 #define BUZZER_PIN 45
 
+// LED (charging indicator)
+#define LED_PIN 6       // active-low (LOW=ON), also used for charge status
+
 // Battery
 #define BATT_ENABLE 21
 #define BATT_ADC    1
+
+// Charger (SY6974B on I2C1)
+#define CHARGER_I2C_SDA 39
+#define CHARGER_I2C_SCL 40
+#define CHARGER_ADDR    0x6B
+#define CHARGER_REG0B   0x0B   // charger status register
 
 // ── Variant-specific config ──
 #ifdef E1002_VARIANT
@@ -97,6 +107,48 @@ int readBatteryPercent() {
   if (voltage >= 3.41) return 10;
   if (voltage >= 3.30) return 5;
   return 0;
+}
+
+// ── Charger LED ──
+
+enum ChargeState { CHG_NONE, CHG_ACTIVE, CHG_DONE };
+
+ChargeState readChargeState() {
+  Wire1.beginTransmission(CHARGER_ADDR);
+  Wire1.write(CHARGER_REG0B);
+  if (Wire1.endTransmission(false) != 0) {
+    return CHG_NONE;  // charger not responding = no USB power
+  }
+  Wire1.requestFrom(CHARGER_ADDR, (uint8_t)1);
+  if (!Wire1.available()) return CHG_NONE;
+
+  uint8_t reg = Wire1.read();
+  bool vbus = reg & 0x20;          // bit 5: VBUS present
+  uint8_t stat = (reg >> 6) & 0x03; // bits 7-6: 00=idle, 01=precharge, 10=fast, 11=done
+
+  if (!vbus) return CHG_NONE;
+  if (stat == 0x03) return CHG_DONE;
+  return CHG_ACTIVE;
+}
+
+void indicateCharge(ChargeState state) {
+  pinMode(LED_PIN, OUTPUT);
+  switch (state) {
+    case CHG_DONE:
+      digitalWrite(LED_PIN, LOW);   // solid on = fully charged
+      break;
+    case CHG_ACTIVE:
+      // Triple pulse = charging
+      for (int i = 0; i < 3; i++) {
+        digitalWrite(LED_PIN, LOW);  delay(80);
+        digitalWrite(LED_PIN, HIGH); delay(200);
+      }
+      break;
+    case CHG_NONE:
+    default:
+      digitalWrite(LED_PIN, HIGH);  // off
+      break;
+  }
 }
 
 // ── Buzzer ──
@@ -248,6 +300,11 @@ void goDeepSleep() {
 
 void setup() {
   Serial0.begin(115200); delay(100);
+
+  // Init charger I2C and check charging status for LED indicator
+  Wire1.begin(CHARGER_I2C_SDA, CHARGER_I2C_SCL);
+  ChargeState chg = readChargeState();
+  indicateCharge(chg);  // flash/blink/solid LED based on charge state
 
   pinMode(EPD_RES, OUTPUT); pinMode(EPD_DC, OUTPUT); pinMode(EPD_CS, OUTPUT);
   hspi.begin(EPD_SCK, -1, EPD_MOSI, -1);
