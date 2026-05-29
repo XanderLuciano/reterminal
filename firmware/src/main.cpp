@@ -1,21 +1,24 @@
 #include <Arduino.h>
 #include <WiFi.h>
 #include <HTTPClient.h>
-#include <GxEPD2_7C.h>
 #include <NimBLEDevice.h>
 #include "wifi_config.h"
-const char* DASHBOARD_BASE_URL = "http://192.168.86.31:8088/dashboard.bin";
+
+#ifdef E1002_VARIANT
+  #include <GxEPD2_7C.h>
+#elif defined(E1001_VARIANT)
+  #include <GxEPD2_BW.h>
+#endif
+
+// ── Shared config ──
 const int NUM_PAGES = 3;
 const char* TEMPLATE_NAMES[] = {"newspaper", "weather", "maintenance"};
-const uint64_t DEEP_SLEEP_SECONDS = 600;
-const int ADVERTISE_TIMEOUT_S = 10;
+const uint64_t DEEP_SLEEP_SECONDS = 120;
+const int ADVERTISE_TIMEOUT_S = 30;
 const int HEALTH_INTERVAL_HOURS = 3;
 const int SELECT_TIMEOUT_S = 30;
-#define BLE_DEVICE_NAME "E1002-Dashboard"
-#define SERVICE_UUID     "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
-#define TRIGGER_UUID     "b2c3d4e5-f6a7-8901-bcde-f12345678901"
 
-// EPD pins
+// EPD pins (same for both E1001 and E1002)
 #define EPD_SCK 7
 #define EPD_MOSI 9
 #define EPD_CS 10
@@ -35,11 +38,28 @@ const int SELECT_TIMEOUT_S = 30;
 #define BATT_ENABLE 21
 #define BATT_ADC    1
 
-GxEPD2_7C<GxEPD2_730c_GDEP073E01, GxEPD2_730c_GDEP073E01::HEIGHT>
-  display(GxEPD2_730c_GDEP073E01(EPD_CS, EPD_DC, EPD_RES, EPD_BUSY));
-SPIClass hspi(HSPI);
+// ── Variant-specific config ──
+#ifdef E1002_VARIANT
+  #define BLE_DEVICE_NAME "E1002-Dashboard"
+  #define SERVICE_UUID     "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+  #define TRIGGER_UUID     "b2c3d4e5-f6a7-8901-bcde-f12345678901"
+  const char* DASHBOARD_BASE_URL = "http://192.168.86.31:8088/dashboard.bin";
+  const size_t FB_SIZE = (800UL * 480UL + 1) / 2;   // 4-bit nibble packed
 
-const size_t FB_SIZE = (800UL * 480UL + 1) / 2;
+  GxEPD2_7C<GxEPD2_730c_GDEP073E01, GxEPD2_730c_GDEP073E01::HEIGHT>
+    display(GxEPD2_730c_GDEP073E01(EPD_CS, EPD_DC, EPD_RES, EPD_BUSY));
+#elif defined(E1001_VARIANT)
+  #define BLE_DEVICE_NAME "E1001-Dashboard"
+  #define SERVICE_UUID     "c3d4e5f6-a7b8-9012-cdef-123456789012"
+  #define TRIGGER_UUID     "d4e5f6a7-b8c9-0123-defa-234567890123"
+  const char* DASHBOARD_BASE_URL = "http://192.168.86.31:8088/dashboard-bw.bin";
+  const size_t FB_SIZE = (800UL * 480UL + 7) / 8;   // 1-bit packed
+
+  GxEPD2_BW<GxEPD2_750_GDEY075T7, GxEPD2_750_GDEY075T7::HEIGHT>
+    display(GxEPD2_750_GDEY075T7(EPD_CS, EPD_DC, EPD_RES, EPD_BUSY));
+#endif
+
+SPIClass hspi(HSPI);
 uint8_t* framebuf = nullptr;
 
 RTC_DATA_ATTR uint32_t rtc_sleep_cycles = 0;
@@ -58,20 +78,13 @@ class TriggerCallbacks : public NimBLECharacteristicCallbacks {
 int readBatteryPercent() {
   pinMode(BATT_ENABLE, OUTPUT);
   digitalWrite(BATT_ENABLE, HIGH);
-  delay(50);  // let ADC stabilize
-  
-  // Read ADC (12-bit, 12dB attenuation ≈ 0–3.1V range)
+  delay(50);
   int raw = analogRead(BATT_ADC);
   delay(10);
-  raw += analogRead(BATT_ADC);  // average 2 readings
+  raw += analogRead(BATT_ADC);
   raw /= 2;
-  
-  digitalWrite(BATT_ENABLE, LOW);  // disable to save power
-  
-  // Voltage divider compensation: actual = pin * 2
+  digitalWrite(BATT_ENABLE, LOW);
   float voltage = (float)raw / 4095.0 * 3.1 * 2.0;
-  
-  // Calibration from ESPHome cookbook (voltage → %)
   if (voltage >= 4.15) return 100;
   if (voltage >= 3.96) return 90;
   if (voltage >= 3.91) return 80;
@@ -116,14 +129,14 @@ bool fetchPage(int page, int batteryPct) {
   framebuf = nullptr;
   framebuf = (uint8_t*)ps_malloc(FB_SIZE);
   if (!framebuf) return false;
-  
+
   char url[256];
   snprintf(url, sizeof(url), "%s?template=%s&battery=%d",
            DASHBOARD_BASE_URL, TEMPLATE_NAMES[page], batteryPct);
-  
+
   HTTPClient http; http.begin(url); http.setTimeout(30000);
   if (http.GET() != 200) { http.end(); return false; }
-  
+
   WiFiClient* stream = http.getStreamPtr();
   size_t total = 0; unsigned long start = millis();
   while (total < FB_SIZE && stream->connected() && millis() - start < 30000) {
@@ -142,7 +155,14 @@ void showPage(int page) {
   if (!framebuf) return;
   display.setFullWindow();
   display.firstPage();
-  do { display.loadImageBuffer(framebuf, FB_SIZE); } while (display.nextPage());
+  do {
+#ifdef E1002_VARIANT
+    display.loadImageBuffer(framebuf, FB_SIZE);
+#elif defined(E1001_VARIANT)
+    display.fillScreen(GxEPD_WHITE);
+    display.drawBitmap(0, 0, framebuf, 800, 480, GxEPD_BLACK);
+#endif
+  } while (display.nextPage());
   rtc_active_page = page;
   framebuf = nullptr;
 }
@@ -152,7 +172,7 @@ void showPage(int page) {
 int selectPage(int currentPage) {
   int selected = currentPage;
   beepPage(selected);
-  
+
   unsigned long start = millis();
   while (millis() - start < SELECT_TIMEOUT_S * 1000UL) {
     if (digitalRead(BTN_LEFT) == LOW) {
@@ -228,7 +248,7 @@ void goDeepSleep() {
 
 void setup() {
   Serial0.begin(115200); delay(100);
-  
+
   pinMode(EPD_RES, OUTPUT); pinMode(EPD_DC, OUTPUT); pinMode(EPD_CS, OUTPUT);
   hspi.begin(EPD_SCK, -1, EPD_MOSI, -1);
   display.epd2.selectSPI(hspi, SPISettings(2000000, MSBFIRST, SPI_MODE0));
@@ -240,12 +260,23 @@ void setup() {
   esp_sleep_wakeup_cause_t wakeCause = esp_sleep_get_wakeup_cause();
   bool btnWake = (wakeCause == ESP_SLEEP_WAKEUP_EXT1);
 
+#ifdef E1002_VARIANT
+  const char* DEVICE_NAME = "E1002";
+#elif defined(E1001_VARIANT)
+  const char* DEVICE_NAME = "E1001";
+#endif
+
   if (rtc_first_boot) {
     rtc_first_boot = false; rtc_sleep_cycles = 0;
     display.init(0);
     display.setFullWindow();
     display.firstPage();
-    do { display.fillScreen(GxEPD_WHITE); display.setCursor(30, 220); display.print("E1002 Dashboard"); } while (display.nextPage());
+    do {
+      display.fillScreen(GxEPD_WHITE);
+      display.setCursor(30, 220);
+      display.print(DEVICE_NAME);
+      display.print(" Dashboard");
+    } while (display.nextPage());
     delay(500);
     refreshAndShow(0);
     goDeepSleep();

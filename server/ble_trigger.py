@@ -16,17 +16,32 @@ import argparse
 import sys
 from bleak import BleakScanner, BleakClient
 
-# Must match firmware
+# Must match firmware — per-device UUIDs
+DEVICE_CONFIG = {
+    "E1002-Dashboard": {
+        "service": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+        "trigger": "b2c3d4e5-f6a7-8901-bcde-f12345678901",
+    },
+    "E1001-Dashboard": {
+        "service": "c3d4e5f6-a7b8-9012-cdef-123456789012",
+        "trigger": "d4e5f6a7-b8c9-0123-defa-234567890123",
+    },
+}
 TARGET_NAME = "E1002-Dashboard"
-SERVICE_UUID = "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
-TRIGGER_UUID = "b2c3d4e5-f6a7-8901-bcde-f12345678901"
+SERVICE_UUID = DEVICE_CONFIG[TARGET_NAME]["service"]
+TRIGGER_UUID = DEVICE_CONFIG[TARGET_NAME]["trigger"]
 
 
-async def trigger_epaper(name: str = TARGET_NAME, scan_timeout: float = 25.0, connect_timeout: float = 10.0):
-    """Scan for the E1002 by service UUID, connect, write trigger, disconnect."""
+async def trigger_epaper(name: str = TARGET_NAME, scan_timeout: float = 25.0, connect_timeout: float = 10.0,
+                         service_uuid: str = None, trigger_uuid: str = None):
+    """Scan for the device by service UUID, connect, write trigger, disconnect."""
+    if service_uuid is None:
+        service_uuid = DEVICE_CONFIG.get(name, {}).get("service", SERVICE_UUID)
+    if trigger_uuid is None:
+        trigger_uuid = DEVICE_CONFIG.get(name, {}).get("trigger", TRIGGER_UUID)
 
     # ── Scan by service UUID (more reliable than name) ──
-    print(f"Scanning up to {scan_timeout}s for E1002...", file=sys.stderr)
+    print(f"Scanning up to {scan_timeout}s for {name}...", file=sys.stderr)
     device = None
     stop_event = asyncio.Event()
 
@@ -37,7 +52,7 @@ async def trigger_epaper(name: str = TARGET_NAME, scan_timeout: float = 25.0, co
         try:
             if hasattr(adv_data, 'service_uuids') and adv_data.service_uuids:
                 for uuid in adv_data.service_uuids:
-                    if str(uuid) == SERVICE_UUID:
+                    if str(uuid) == service_uuid:
                         device = dev
                         stop_event.set()
                         return
@@ -66,7 +81,7 @@ async def trigger_epaper(name: str = TARGET_NAME, scan_timeout: float = 25.0, co
         async with BleakClient(device, timeout=connect_timeout) as client:
             print(f"Connected! Writing trigger...", file=sys.stderr)
             # Write any non-zero byte to trigger a refresh
-            await client.write_gatt_char(TRIGGER_UUID, b"\x01", response=True)
+            await client.write_gatt_char(trigger_uuid, b"\x01", response=False)
             print("Trigger sent!", file=sys.stderr)
             return True
     except Exception as e:

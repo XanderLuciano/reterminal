@@ -10,7 +10,7 @@ import io
 from datetime import datetime
 from pathlib import Path
 from flask import Flask, Response, request
-from renderer import render_html, dither_spectra6, render_dashboard_raw
+from renderer import render_html, dither_spectra6, render_dashboard_raw, render_dashboard_raw_bw, dither_bw
 from weather_provider import fetch_weather
 
 HERE = Path(__file__).parent
@@ -272,7 +272,7 @@ def preview_png():
 
 @app.route("/dashboard.bin")
 def dashboard_bin():
-    """Raw nibble-packed binary for direct ESP32 framebuffer ingest.
+    """Raw nibble-packed binary for E1002 Spectra 6 color framebuffer.
     
     The ESP32 fetches this, memcpys it into the GxEPD2 buffer,
     then calls display.refresh(). No PNG decoding needed.
@@ -285,6 +285,36 @@ def dashboard_bin():
     return Response(raw, mimetype="application/octet-stream")
 
 
+@app.route("/dashboard-bw.bin")
+def dashboard_bw_bin():
+    """Raw bit-packed binary for E1001 monochrome (BW) framebuffer.
+    
+    1-bit per pixel, 8 pixels per byte, MSB first.
+    Same 800×480 resolution, just BW instead of 6-color.
+    """
+    template = request.args.get("template", "newspaper")
+    battery = request.args.get("battery", "—")
+    fname = f"{template}.html"
+    context = get_mock_context(fname, battery)
+    raw = render_dashboard_raw_bw(fname, context)
+    return Response(raw, mimetype="application/octet-stream")
+
+
+@app.route("/dashboard-bw.png")
+def dashboard_bw_png():
+    """BW-dithered PNG preview for E1001 (for design iteration)."""
+    template = request.args.get("template", "newspaper")
+    battery = request.args.get("battery", "—")
+    fname = f"{template}.html"
+    context = get_mock_context(fname, battery)
+    png_data = render_html(fname, context)
+    dithered = dither_bw(png_data)
+
+    buf = io.BytesIO()
+    dithered.save(buf, format="PNG")
+    return Response(buf.getvalue(), mimetype="image/png")
+
+
 @app.route("/health")
 def health():
     return {"status": "ok"}
@@ -292,39 +322,48 @@ def health():
 
 @app.route("/trigger", methods=["POST", "GET"])
 def trigger_refresh():
-    """Push a BLE trigger to the E1002 for immediate refresh.
-    
-    Renders a fresh dashboard, then sends a BLE wake packet.
-    The ESP32 will wake within 30 seconds, connect via WiFi,
-    and fetch the new dashboard.bin.
-    
-    GET for browser convenience, POST for API use.
-    """
+    """Push a BLE trigger to the E1002 for immediate refresh."""
     template = request.args.get("template", "newspaper")
     fname = f"{template}.html"
-
-    # Pre-render to make sure dashboard.bin is fresh when ESP32 fetches
     battery = request.args.get("battery", "—")
     context = get_mock_context(fname, battery)
-    raw = render_dashboard_raw(fname, context)
+    render_dashboard_raw(fname, context)  # pre-render
 
-    # Trigger BLE push (async, fire-and-forget)
     import subprocess, os
     script = os.path.join(os.path.dirname(__file__), "ble_trigger.py")
     try:
         subprocess.Popen(
-            ["python3", script, "--retries", "2"],
+            ["python3", script, "--name", "E1002-Dashboard", "--retries", "2"],
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
         )
-        ble_status = "BLE trigger sent"
+        ble_status = "BLE trigger sent to E1002"
     except Exception as e:
         ble_status = f"BLE trigger failed: {e}"
 
-    return {
-        "status": "ok",
-        "ble": ble_status,
-        "message": f"Fresh {template} render ready, ESP32 should refresh within 30s"
-    }
+    return {"status": "ok", "ble": ble_status, "message": f"Fresh {template} render ready for E1002"}
+
+
+@app.route("/trigger-e1001", methods=["POST", "GET"])
+def trigger_e1001_refresh():
+    """Push a BLE trigger to the E1001 monochrome display."""
+    template = request.args.get("template", "newspaper")
+    fname = f"{template}.html"
+    battery = request.args.get("battery", "—")
+    context = get_mock_context(fname, battery)
+    render_dashboard_raw_bw(fname, context)  # pre-render BW version
+
+    import subprocess, os
+    script = os.path.join(os.path.dirname(__file__), "ble_trigger.py")
+    try:
+        subprocess.Popen(
+            ["python3", script, "--name", "E1001-Dashboard", "--retries", "2"],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+        )
+        ble_status = "BLE trigger sent to E1001"
+    except Exception as e:
+        ble_status = f"BLE trigger failed: {e}"
+
+    return {"status": "ok", "ble": ble_status, "message": f"Fresh {template} BW render ready for E1001"}
 
 
 if __name__ == "__main__":

@@ -125,7 +125,43 @@ def _closest_nibble(r: int, g: int, b: int) -> int:
 
 
 def render_dashboard_raw(template_name: str = "dashboard.html", context: dict | None = None) -> bytes:
-    """Full pipeline: HTML → screenshot → dither → nibble-packed binary for ESP32."""
+    """Full pipeline: HTML → screenshot → dither → nibble-packed binary for ESP32 (Spectra 6 color)."""
     png_data = render_html(template_name, context)
     dithered = dither_spectra6(png_data)
     return pack_nibbles(dithered)
+
+
+# ── Monochrome (BW) pipeline for E1001 / GxEPD2_BW displays ──
+
+def dither_bw(png_data: bytes) -> Image.Image:
+    """Floyd-Steinberg dither to 1-bit black & white."""
+    img = Image.open(io.BytesIO(png_data)).convert("L")
+    img = img.resize((800, 480), Image.LANCZOS)
+    return img.convert("1", dither=Image.Dither.FLOYDSTEINBERG)
+
+
+def pack_bits(img: Image.Image) -> bytes:
+    """
+    Convert a 1-bit BW image to GxEPD2 bit-packed format.
+    8 pixels per byte, MSB first (leftmost pixel = bit 7).
+    
+    Returns raw bytes ready for GxEPD2_BW display buffer.
+    """
+    if img.mode != "1":
+        img = img.convert("1", dither=Image.Dither.FLOYDSTEINBERG)
+    w, h = img.size
+    buf = bytearray((w * h + 7) // 8)
+
+    for i, pixel in enumerate(img.getdata()):
+        # pixel is 0 (black) or 255 (white) in mode "1"
+        if pixel == 0:
+            buf[i // 8] |= 0x80 >> (i % 8)
+
+    return bytes(buf)
+
+
+def render_dashboard_raw_bw(template_name: str = "dashboard.html", context: dict | None = None) -> bytes:
+    """Full pipeline: HTML → screenshot → BW dither → bit-packed binary for E1001."""
+    png_data = render_html(template_name, context)
+    dithered = dither_bw(png_data)
+    return pack_bits(dithered)
