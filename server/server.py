@@ -38,7 +38,7 @@ def _fallback_weather(battery="87"):
     daylight_pct = int(elapsed / daylight_minutes * 100) if daylight_minutes > 0 else 0
 
     return {
-        "location": "Moorpark, CA",
+        "location": "Your Town, USA",
         "current": {
             "temp": "--",
             "temp_color": "#888888",
@@ -76,6 +76,11 @@ def _fallback_weather(battery="87"):
 def get_maintenance_context(battery="87"):
     now = datetime.now()
 
+    # Generate relative dates so they never go stale
+    from datetime import timedelta
+    def rel_date(days_ago_val):
+        return (now - timedelta(days=days_ago_val)).strftime("%Y-%m-%d")
+
     def days_ago(date_str):
         d = datetime.strptime(date_str, "%Y-%m-%d")
         return (now - d).days
@@ -108,35 +113,35 @@ def get_maintenance_context(battery="87"):
         {
             "icon": "🔧", "name": "Appliances", "interval_label": "every 1–12 months",
             "tasks": [
-                make_item("Fridge water filter", "2025-11-15", 180, "6mo interval"),
-                make_item("Hot water tank flush", "2026-02-01", 365, "annual"),
-                make_item("Dishwasher filter clean", "2026-04-10", 90),
-                make_item("Washing machine drum clean", "2026-04-28", 60),
+                make_item("Fridge water filter", rel_date(200), 180, "6mo interval"),
+                make_item("Hot water tank flush", rel_date(120), 365, "annual"),
+                make_item("Dishwasher filter clean", rel_date(50), 90),
+                make_item("Washing machine drum clean", rel_date(30), 60),
             ]
         },
         {
             "icon": "🌀", "name": "Air & Filters", "interval_label": "every 1–6 months",
             "tasks": [
-                make_item("HVAC return filter", "2026-03-01", 90),
-                make_item("Bathroom exhaust fan filter", "2026-01-10", 180),
-                make_item("Range hood filter", "2026-05-01", 60),
+                make_item("HVAC return filter", rel_date(90), 90),
+                make_item("Bathroom exhaust fan filter", rel_date(140), 180),
+                make_item("Range hood filter", rel_date(28), 60),
             ]
         },
         {
             "icon": "🧹", "name": "Cleaning", "interval_label": "every 1–8 weeks",
             "tasks": [
-                make_item("Deep clean bathrooms", "2026-05-10", 14),
-                make_item("Oven deep clean", "2026-03-20", 90),
-                make_item("Window tracks & sills", "2026-04-15", 60),
+                make_item("Deep clean bathrooms", rel_date(18), 14),
+                make_item("Oven deep clean", rel_date(70), 90),
+                make_item("Window tracks & sills", rel_date(45), 60),
             ]
         },
         {
             "icon": "⚡", "name": "Safety & Seasonal", "interval_label": "every 3–12 months",
             "tasks": [
-                make_item("Generator test run", "2026-05-01", 90),
-                make_item("Smoke detector battery test", "2026-04-01", 180),
-                make_item("Garage door lube & inspect", "2026-03-01", 180),
-                make_item("Fire extinguisher check", "2026-02-15", 365),
+                make_item("Generator test run", rel_date(28), 90),
+                make_item("Smoke detector battery test", rel_date(60), 180),
+                make_item("Garage door lube & inspect", rel_date(90), 180),
+                make_item("Fire extinguisher check", rel_date(105), 365),
             ]
         },
     ]
@@ -147,7 +152,7 @@ def get_maintenance_context(battery="87"):
     good = sum(1 for s in sections for i in s["tasks"] if i["status"] == "good")
 
     return {
-        "location": "Moorpark, CA",
+        "location": "Your Town, USA",
         "sections": sections,
         "summary": {"overdue": overdue, "soon": soon, "good": good},
         "updated_at": now.strftime("%I:%M %p"),
@@ -169,38 +174,38 @@ def get_mock_context(template_name="dashboard.html", battery="87"):
             "date_long": now.strftime("%A, %B %d, %Y"),
             "issue_number": now.strftime("%j"),
             "lead_story": {
-                "title": "E-Paper Display Goes Fully Wireless",
-                "detail": "BLE push trigger confirmed working! ESP32 wakes from deep sleep, fetches dashboard over WiFi, and refreshes — all without a USB cable. Next: real API data.",
-                "time": "BREAKING",
-                "meta": "Moorpark, CA — firwmare fix deployed via PlatformIO",
+                "title": "E-Ink Dashboard Runs for Weeks on a Single Charge",
+                "detail": "Wireless updates over WiFi with BLE push triggers. The 7.5-inch display draws zero power between refreshes — months of battery life from a 2000mAh cell.",
+                "time": "TECH",
+                "meta": "reTerminal E10xx · ESP32-S3 · PlatformIO · open-source firmware",
             },
             "second_story": {
-                "title": "Kitchen Renovation Nears Finish Line",
-                "detail": "Cabinet handles ready for pickup at Home Depot. Countertop installation scheduled next. Final phase: backsplash and lighting.",
-                "time": "IN PROGRESS",
-                "meta": "67% complete — backsplash + lighting remain",
+                "title": "Open Source, Hackable, Yours to Customize",
+                "detail": "Edit the HTML templates to change the layout. Tweak the Python server for your own data sources. Flash new firmware over USB in under a minute.",
+                "time": "DIY",
+                "meta": "Clone from github.com/XanderLuciano/reterminal",
             },
             "weather": {
-                "temp": 68,
-                "feels_like": 65,
-                "description": "Clear Skies",
-                "humidity": 52,
-                "wind": 5,
-                "pollen": "7.2",
-                "sunrise": "5:49 AM",
-                "sunset": "7:55 PM",
+                "temp": 72,
+                "feels_like": 70,
+                "description": "Partly Cloudy",
+                "humidity": 48,
+                "wind": 7,
+                "pollen": "4.1",
+                "sunrise": "6:12 AM",
+                "sunset": "8:03 PM",
             },
             "reminders": [
-                {"text": "HOA contractor follow-up", "time": "Wed"},
-                {"text": "Cheddar vet appointment", "time": "Fri 2pm"},
-                {"text": "Cabinet handles — pick up", "time": "Soon"},
+                {"text": "Water the plants", "time": "Today"},
+                {"text": "Team standup", "time": "10 AM"},
+                {"text": "Grocery run", "time": "Evening"},
             ],
             "stats": {
-                "tokens": "1.4M",
-                "deepseek_spend": "$9.27",
-                "active_agents": "3",
-                "kitchen_reno": "67",
-                "pihole_blocked": "0.1%",
+                "tokens": "2.8M",
+                "deepseek_spend": "$4.12",
+                "active_agents": "2",
+                "kitchen_reno": "100",
+                "pihole_blocked": "3.2%",
             },
             "updated_at": now.strftime("%I:%M %p"),
             "battery": battery,
