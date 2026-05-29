@@ -12,10 +12,14 @@ HERE = Path(__file__).parent
 CACHE_FILE = HERE / "weather_cache.json"
 CACHE_TTL = timedelta(minutes=10)  # re-fetch after 10 min
 
-# Moorpark, CA NWS grid point
+# NWS grid point — change these to your location
+# Find yours: https://api.weather.gov/points/{lat},{lng}
 GRID_ID = "LOX"
 GRID_X = 134
 GRID_Y = 59
+LOCATION_NAME = "Moorpark, CA"  # displayed in templates
+LAT = 34.2856
+LNG = -118.8820
 
 NWS_BASE = "https://api.weather.gov"
 SUNRISE_API = "https://api.sunrise-sunset.org/json"
@@ -339,7 +343,7 @@ def fetch_weather() -> dict | None:
 
     # 4. Get sunrise/sunset
     today_date = now.strftime("%Y-%m-%d")
-    sunset_url = f"{SUNRISE_API}?lat=34.2856&lng=-118.8820&date={today_date}&formatted=0"
+    sunset_url = f"{SUNRISE_API}?lat=" + str(LAT) + "&lng=" + str(LNG) + "&date={today_date}&formatted=0"
     sunrise_data = _fetch_json(sunset_url)
 
     # ── Parse current conditions ──
@@ -440,7 +444,7 @@ def fetch_weather() -> dict | None:
     # Fetch UV + AQI in one call (Open-Meteo air quality has UV too, but separate endpoints)
     uv_data = _fetch_json(
         "https://api.open-meteo.com/v1/forecast?"
-        "latitude=34.2856&longitude=-118.8820&current=uv_index&timezone=America%2FLos_Angeles"
+        "latitude=" + str(LAT) + "&longitude=" + str(LNG) + "&current=uv_index&timezone=America%2FLos_Angeles"
     )
     if uv_data and "current" in uv_data:
         uv_index = uv_data["current"].get("uv_index")
@@ -448,7 +452,7 @@ def fetch_weather() -> dict | None:
     # Fetch AQI from Open-Meteo Air Quality API (free, no key)
     aqi_data = _fetch_json(
         "https://air-quality-api.open-meteo.com/v1/air-quality?"
-        "latitude=34.2856&longitude=-118.8820&current=us_aqi,us_aqi_pm2_5,us_aqi_pm10"
+        "latitude=" + str(LAT) + "&longitude=" + str(LNG) + "&current=us_aqi,us_aqi_pm2_5,us_aqi_pm10"
     )
     if aqi_data and "current" in aqi_data:
         aqi = aqi_data["current"].get("us_aqi")
@@ -464,7 +468,7 @@ def fetch_weather() -> dict | None:
 
     # ── Build context ──
     context = {
-        "location": "Moorpark, CA",
+        "location": LOCATION_NAME,
         "current": {
             "temp": current_temp_f if current_temp_f is not None else (today_high or "--"),
             "temp_color": _get_temp_color(current_temp_f) if current_temp_f else "#111111",
