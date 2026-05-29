@@ -191,9 +191,9 @@ def get_mock_context(template_name="dashboard.html", battery="—"):
                 "sunset": "7:55 PM",
             },
             "reminders": [
-                {"text": "E-paper wireless refresh test", "time": "Now"},
                 {"text": "HOA contractor follow-up", "time": "Wed"},
                 {"text": "Cheddar vet appointment", "time": "Fri 2pm"},
+                {"text": "Cabinet handles — pick up", "time": "Soon"},
             ],
             "stats": {
                 "tokens": "1.4M",
