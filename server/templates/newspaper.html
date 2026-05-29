@@ -292,7 +292,7 @@
 <!-- Footer -->
 <div class="footer">
   <span>Updated {{ updated_at }}</span>
-  <span class="battery {% if battery is string %}{% else %}{% if battery|int >= 80 %}battery-full{% elif battery|int >= 30 %}battery-ok{% else %}battery-low{% endif %}{% endif %}">🔋 {{ battery }}{% if battery is not string %}%{% endif %}</span>
+  <span class="battery {% if battery is string %}{% else %}{% if battery|int >= 80 %}battery-full{% elif battery|int >= 30 %}battery-ok{% else %}battery-low{% endif %}{% endif %}">BAT {{ battery }}{% if battery is not string %}%{% endif %}</span>
 </div>
 
 </body>

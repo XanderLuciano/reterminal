@@ -302,7 +302,7 @@
   <span>Updated {{ updated_at }}</span>
   <span class="page-indicator">Page 3/3 · Press ◀ ▶</span>
   <span class="battery" style="color: {% if battery is string %}#555{% else %}{% if battery|int >= 80 %}#00aa00{% elif battery|int >= 30 %}#ff8800{% else %}#ff0000{% endif %}{% endif %};">
-    🔋 {{ battery }}{% if battery is not string %}%{% endif %}
+    BAT {{ battery }}{% if battery is not string %}%{% endif %}
   </span>
 </div>
 

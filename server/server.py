@@ -18,7 +18,7 @@ app = Flask(__name__)
 
 # ── Real weather data (via NWS API, no key needed) ──
 
-def get_weather_context(battery="—"):
+def get_weather_context(battery="87"):
     ctx = fetch_weather()
     if ctx:
         ctx["battery"] = battery
@@ -27,7 +27,7 @@ def get_weather_context(battery="—"):
     return _fallback_weather(battery)
 
 
-def _fallback_weather(battery="—"):
+def _fallback_weather(battery="87"):
     """Static fallback when API is unreachable."""
     now = datetime.now()
     sunrise_hr, sunrise_min = 5, 49
@@ -73,7 +73,7 @@ def _fallback_weather(battery="—"):
     }
 
 
-def get_maintenance_context(battery="—"):
+def get_maintenance_context(battery="87"):
     now = datetime.now()
 
     def days_ago(date_str):
@@ -155,7 +155,7 @@ def get_maintenance_context(battery="—"):
     }
 
 
-def get_mock_context(template_name="dashboard.html", battery="—"):
+def get_mock_context(template_name="dashboard.html", battery="87"):
     now = datetime.now()
 
     if template_name == "maintenance.html":

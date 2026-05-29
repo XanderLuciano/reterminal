@@ -345,7 +345,7 @@
   <div class="footer">
     <span>Updated {{ updated_at }}</span>
     <span class="page-indicator">Page 2/2 · Press ◀ ▶ to switch</span>
-    <span class="battery" style="color: {% if battery == "—" %}#555{% elif battery|int >= 80 %}#00aa00{% elif battery|int >= 30 %}#ff8800{% else %}#ff0000{% endif %};">🔋 {{ battery }}%</span>
+    <span class="battery" style="color: {% if battery == "—" %}#555{% elif battery|int >= 80 %}#00aa00{% elif battery|int >= 30 %}#ff8800{% else %}#ff0000{% endif %};">BAT {{ battery }}%</span>
     <span>The Daily Glitch</span>
   </div>
 
