@@ -1,0 +1,17 @@
+{
+  "_comment": "URL pages — add any URL here and it becomes a page on your display. Add the page 'name' to TEMPLATE_NAMES[] in firmware/src/main.cpp to include it. Remove or set enabled:false to disable.",
+  "pages": [
+    {
+      "name": "homeassistant",
+      "url": "http://YOUR_HA_IP:8123/lovelace/0?viewport=800x480",
+      "refresh_seconds": 300,
+      "enabled": false
+    },
+    {
+      "name": "grafana",
+      "url": "http://YOUR_GRAFANA_IP:3000/d-solo/abc123/dashboard?theme=light&width=800&height=480",
+      "refresh_seconds": 600,
+      "enabled": false
+    }
+  ]
+}

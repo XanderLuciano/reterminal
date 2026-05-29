@@ -106,6 +106,14 @@ Edit `server/templates/*.html` — Jinja2 at 800×480. Restart server and trigge
 4. Update `NUM_PAGES`
 5. Rebuild and flash
 
+### Add a URL page (no HTML needed)
+1. Add an entry to `server/url_pages.json` (name, URL, refresh_seconds, enabled:true)
+2. Add the page name to `TEMPLATE_NAMES[]` in firmware
+3. Update `NUM_PAGES`
+4. Rebuild and flash
+
+The server auto-fetches, screenshots, and refreshes on schedule.
+
 ### Preview without a display
 ```bash
 curl -o preview.png http://localhost:8088/preview.png?template=newspaper     # full color

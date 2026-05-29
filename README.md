@@ -76,6 +76,8 @@ WiFi only fires on BLE trigger, button press, or 6-hour health refresh.
 
 Templates: `newspaper`, `weather`, `maintenance`.
 
+URL-based pages also supported — see [`url_pages.json`](server/url_pages.json).
+
 ## Quick Setup
 
 See [`QUICKSTART.md`](QUICKSTART.md) for the full walkthrough. TL;DR:
@@ -93,6 +95,18 @@ pio run -e reterminal_e1001 -t upload --upload-port /dev/ttyUSB0   # E1001
 ```
 
 ## Making It Your Own
+
+### URL Pages — point at any website
+
+Drop URLs into `server/url_pages.json` and they become pages on your display. The server screenshots them at 800×480, dithers for e-ink, and auto-refreshes on schedule.
+
+
+
+Add `"my_dashboard"` to `TEMPLATE_NAMES[]` in firmware, rebuild, flash. Endpoints:
+- `GET /page/my_dashboard.bin` — BW framebuffer (E1001)
+- `GET /page/my_dashboard_color.bin` — color framebuffer (E1002)
+
+### Edit HTML templates
 
 - **Content:** Edit `server/server.py` → `get_mock_context()` — headlines, agenda, stats
 - **Weather location:** Update coordinates in `server/weather_provider.py`

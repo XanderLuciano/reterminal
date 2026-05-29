@@ -12,6 +12,7 @@ from pathlib import Path
 from flask import Flask, Response, request
 from renderer import render_html, dither_spectra6, render_dashboard_raw, render_dashboard_raw_bw, dither_bw
 from weather_provider import fetch_weather
+from url_renderer import get_page_binary, get_page_png, get_page_meta, start as start_url_renderer, list_pages
 
 HERE = Path(__file__).parent
 app = Flask(__name__)
@@ -372,5 +373,51 @@ def trigger_e1001_refresh():
     return {"status": "ok", "ble": ble_status, "message": f"Fresh {template} BW render ready for E1001"}
 
 
+# ── URL Pages (external URL screenshots) ──
+
+@app.route("/page/<name>.bin")
+def url_page_bin(name):
+    """BW-dithered framebuffer for a URL page (E1001)."""
+    data = get_page_binary(name, "bw")
+    if data is None:
+        return {"error": f"URL page '{name}' not found or not yet rendered"}, 404
+    return Response(data, mimetype="application/octet-stream")
+
+
+@app.route("/page/<name>_color.bin")
+def url_page_color_bin(name):
+    """Color-dithered framebuffer for a URL page (E1002)."""
+    data = get_page_binary(name, "color")
+    if data is None:
+        return {"error": f"URL page '{name}' not found or not yet rendered"}, 404
+    return Response(data, mimetype="application/octet-stream")
+
+
+@app.route("/page/<name>.png")
+def url_page_png(name):
+    """Preview PNG for a URL page."""
+    data = get_page_png(name)
+    if data is None:
+        return {"error": f"URL page '{name}' not found or not yet rendered"}, 404
+    return Response(data, mimetype="image/png")
+
+
+@app.route("/page/<name>/meta")
+def url_page_meta(name):
+    """Metadata for a URL page."""
+    meta = get_page_meta(name)
+    if meta is None:
+        return {"error": f"URL page '{name}' not found"}, 404
+    return meta
+
+
+@app.route("/pages")
+def list_url_pages():
+    """List all configured URL pages."""
+    pages = list_pages()
+    return {"pages": pages, "count": len(pages)}
+
+
 if __name__ == "__main__":
+    start_url_renderer()
     app.run(host="0.0.0.0", port=8088, debug=False)

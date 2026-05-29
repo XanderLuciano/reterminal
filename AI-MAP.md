@@ -71,6 +71,7 @@ Pinout is identical for both devices. Same ESP32-S3 chip.
 | Button behavior, sleep timing, BLE | `firmware/src/main.cpp` (shared, #ifdef per variant) |
 | Board config, build flags | `firmware/platformio.ini` |
 | BLE trigger from NUC | `server/ble_trigger.py` → `DEVICE_CONFIG` dict |
+| URL-based pages | `server/url_pages.json` → configure, then `server/url_renderer.py` auto-handles |
 | Server routes | `server/server.py` |
 | WiFi credentials | `firmware/src/wifi_config.h` (local only, gitignored) |
 
