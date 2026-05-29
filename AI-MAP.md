@@ -29,6 +29,7 @@ dev/projects/epaper-display/
 ├── e1002-hello.yaml           # ESPHome attempt (compiles, display untested)
 ├── pio-test/                  # Original hello-world (legacy, gitignored)
 ├── README.md                  # Full human documentation
+├── HARDWARE.md                # Complete IO pin reference
 └── AI-MAP.md                  # This file
 ```
 
@@ -132,6 +133,12 @@ E1001 uses `drawBitmap()` which expects 1-bit packed data — no patch needed. `
 ### F6: /dev/ttyUSB0 Permissions
 - Can revert to 660 after ESP32 reboot. Fix: `sudo chmod 666 /dev/ttyUSB0`
 
+### F8: Display Must Re-init After Deep Sleep
+- EPD controller (UC8179) loses power state during deep sleep
+- Must call `display.init(0)` on EVERY wake, not just first boot
+- Without it: display appears frozen, won't change pages
+- Fixed in showPage() which calls init() before any display operation
+
 ### F7: BlueZ BLE Connection Issues
 - NUC's BlueZ stack sometimes fails with `br-connection-canceled` or `UNLIKELY_ERROR`
 - Workaround: display wakes on timer every 60s anyway — web trigger pre-renders, next wake picks it up
@@ -177,6 +184,8 @@ pm2 logs epaper-server --lines 10 --nostream
 
 ## Hardware Quick Reference
 
+**Full reference:** `HARDWARE.md` — complete pin map, BMS, charger I2C, power architecture.
+
 | Component | Pin | Notes |
 |---|---|---|
 | EPD SCK | GPIO7 | HSPI |
@@ -188,11 +197,16 @@ pm2 logs epaper-server --lines 10 --nostream
 | BTN_GREEN | GPIO3 | Active-low, INPUT_PULLUP, confirm |
 | BTN_RIGHT | GPIO4 | Active-low, INPUT_PULLUP, next |
 | BTN_LEFT | GPIO5 | Active-low, INPUT_PULLUP, prev |
+| LED | GPIO6 | Active-low (LOW=ON), charging indicator |
 | BUZZER | GPIO45 | PWM tone() |
-| BATT_ENABLE | GPIO21 | Enable battery ADC |
-| BATT_ADC | GPIO1 | Analog battery voltage |
-| CH341 UART RX | GPIO44 | Serial0 |
-| CH341 UART TX | GPIO43 | Serial0 |
+| BATT_ENABLE | GPIO21 | Enable battery ADC divider |
+| BATT_ADC | GPIO1 | Analog battery voltage (÷2 divider) |
+| CHARGER_SDA | GPIO39 | SY6974B I2C1 @ 0x6B |
+| CHARGER_SCL | GPIO40 | SY6974B I2C1 @ 0x6B |
+| I2C0_SDA | GPIO19 | SHT40 (0x44) + PCF8563 RTC (0x51) |
+| I2C0_SCL | GPIO20 | |
+| CH341 UART RX | GPIO44 | Serial0 debug console |
+| CH341 UART TX | GPIO43 | Serial0 debug console |
 
 Same pinout for both E1001 and E1002.
 

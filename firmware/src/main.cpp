@@ -205,6 +205,7 @@ bool fetchPage(int page, int batteryPct) {
 
 void showPage(int page) {
   if (!framebuf) return;
+  display.init(0);  // re-init after deep sleep (controller loses power)
   display.setFullWindow();
   display.firstPage();
   do {
