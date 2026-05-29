@@ -94,6 +94,27 @@ sudo chmod 666 /dev/ttyUSB0
 
 **WiFi credentials:** Copy `firmware/src/wifi_config.h.example` → `wifi_config.h` and fill in your network. The real file is gitignored.
 
+## Making It Your Own
+
+The default mock data is generic and demo-friendly. To personalize:
+
+### Edit content
+Edit `server/server.py` — the `get_mock_context()` function contains headlines, agenda items, and stats. Replace the demo data with your own.
+
+### Edit weather location
+Update the coordinates in `server/weather_provider.py` (NWS grid point) and the fallback location string.
+
+### Edit layout / design
+Edit the HTML templates in `server/templates/` — they're plain Jinja2 HTML rendered at 800×480 via Playwright. Restart the server and trigger a refresh to see changes.
+
+### Change the newspaper name
+Edit the masthead in `server/templates/newspaper.html` — replace "The Daily Glitch" with your own.
+
+```bash
+pm2 restart epaper-server
+curl http://localhost:8088/trigger
+```
+
 ## Adding a New Page
 
 1. Create a new template in `server/templates/` (e.g., `calendar.html`)

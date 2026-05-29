@@ -173,6 +173,7 @@ def get_mock_context(template_name="dashboard.html", battery="87"):
         return {
             "date_long": now.strftime("%A, %B %d, %Y"),
             "issue_number": now.strftime("%j"),
+            "location": "Your Town, USA",
             "lead_story": {
                 "title": "E-Ink Dashboard Runs for Weeks on a Single Charge",
                 "detail": "Wireless updates over WiFi with BLE push triggers. The 7.5-inch display draws zero power between refreshes — months of battery life from a 2000mAh cell.",
@@ -231,11 +232,11 @@ def get_mock_context(template_name="dashboard.html", battery="87"):
         "reminders": [
             {"text": "Kitchen cabinet handles — pick up from Home Depot", "time": "Today", "priority": "urgent"},
             {"text": "HOA waterproofing contractor follow-up", "time": "Wed", "priority": "soon"},
-            {"text": "Cheddar vet appointment", "time": "Fri 2pm", "priority": "later"},
+            {"text": "Grocery run", "time": "Evening", "priority": "later"},
         ],
         "cards": [
-            {"icon": "🧠", "value": "1.2M", "label": "OpenClaw tokens today"},
-            {"icon": "📡", "value": "$8.42", "label": "DeepSeek spend today"},
+            {"icon": "🧠", "value": "2.4M", "label": "API tokens today"},
+            {"icon": "📡", "value": "$3.15", "label": "API spend today"},
             {"icon": "⚡", "value": "3", "label": "Active sub-agents"},
             {"icon": "🔧", "value": "67%", "label": "Kitchen reno progress"},
         ],
