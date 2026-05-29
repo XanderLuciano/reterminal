@@ -1,7 +1,8 @@
 # AI-MAP.md — EPaper Display Project
 
 > **For AI agents working in this codebase.**  
-> Human-readable documentation: `README.md`  
+> **New to this project?** Start with [`QUICKSTART.md`](QUICKSTART.md) — step-by-step from clone to working display.  
+> Human-readable docs: `README.md`, `HARDWARE.md`  
 > This file: routing, structure, gotchas, and agent-specific operational knowledge.
 
 ---
@@ -28,6 +29,7 @@ dev/projects/epaper-display/
 │       └── dashboard.html     # Card-style (legacy)
 ├── e1002-hello.yaml           # ESPHome attempt (compiles, display untested)
 ├── pio-test/                  # Original hello-world (legacy, gitignored)
+├── QUICKSTART.md              # Step-by-step setup guide (entry point)
 ├── README.md                  # Full human documentation
 ├── HARDWARE.md                # Complete IO pin reference
 └── AI-MAP.md                  # This file

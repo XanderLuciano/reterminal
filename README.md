@@ -137,7 +137,9 @@ epaper-display/
 │   ├── weather_provider.py    # NWS + Open-Meteo APIs (no keys)
 │   ├── ble_trigger.py         # BLE push to ESP32 (multi-device)
 │   └── templates/             # Shared page designs (Jinja2 HTML)
-├── README.md                  # This file
+├── QUICKSTART.md              # Zero-to-display guide (start here!)
+├── README.md                  # This file — full reference
+├── HARDWARE.md                # Complete IO pin map & peripherals
 └── AI-MAP.md                  # Agent reference (debugging, internals)
 ```
 

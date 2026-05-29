@@ -1,0 +1,5 @@
+flask>=2.0
+pillow>=9.0
+playwright>=1.30
+bleak>=0.20
+jinja2>=3.0
