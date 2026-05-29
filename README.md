@@ -1,6 +1,22 @@
 # E1001 + E1002 ePaper Dashboards — Wireless
 
-Two wireless e-ink dashboards running the same codebase — the NUC renders pages, pushes updates via BLE, and the displays fetch over WiFi.
+> **🚀 Just got here?** [`QUICKSTART.md`](QUICKSTART.md) — zero to working display in ~10 minutes.
+
+> **🤖 Point your AI here** — copy-paste this into Claude, ChatGPT, or any AI assistant:
+>
+> ```
+> You're working with the reTerminal ePaper Dashboard project from github.com/XanderLuciano/reterminal.
+>
+> 1. Read QUICKSTART.md — it has step-by-step setup instructions
+> 2. Read AI-MAP.md — routing rules, gotchas, and architecture
+> 3. Read HARDWARE.md — complete pin map and peripheral reference
+> 4. The project supports two displays: E1001 (monochrome, env reterminal_e1001) and E1002 (color, env seeed_xiao_esp32s3)
+> 5. Follow the steps in order — they're designed to be mechanically executable
+>
+> My goal is: [describe what you need — set up a display, create a custom page, add a data source, etc.]
+> ```
+
+Two wireless e-ink dashboards sharing one codebase. The server renders pages, pushes updates via BLE, and the displays fetch them over WiFi.
 
 ## Hardware
 
@@ -9,155 +25,117 @@ Two wireless e-ink dashboards running the same codebase — the NUC renders page
 | **Display** | 7.3" Spectra 6 color | 7.5" monochrome BW |
 | **Resolution** | 800×480 | 800×480 |
 | **Colors** | 6 (black, white, yellow, red, blue, green) | 2 (black, white) |
-| **Driver** | GxEPD2_730c_GDEP073E01 | GxEPD2_750_GDEY075T7 |
-| **Controller** | UC8179 | UC8179 |
+| **Refresh time** | 25-45 sec | ~5 sec |
 | **MCU** | ESP32-S3, 8MB PSRAM | ESP32-S3, 8MB PSRAM |
 | **BLE name** | E1002-Dashboard | E1001-Dashboard |
 
-## What's on the Display
+## Pages
 
-3 pages total, shared between both displays:
+3 pages on both displays:
 
-- **Page 1 — The Daily Glitch** (newspaper layout)
-- **Page 2 — Weather** (real NWS API data, no key needed)
-- **Page 3 — Maintenance** (home maintenance tracker)
+- **Page 1 — The Daily Glitch** — newspaper layout with headlines, weather snapshot, agenda
+- **Page 2 — Weather** — full dashboard with live NWS data (no API key needed)
+- **Page 3 — Maintenance** — home maintenance tracker with overdue/status indicators
 
-## How to Use the Buttons
+## Buttons
 
-Select-then-confirm model (same on both displays):
+Select-then-confirm model. Press any button to wake → Left/Right to switch pages → Green to confirm. 30-second timeout returns to sleep. Beeps indicate current page (1 beep = page 1, 2 = page 2, 3 = page 3). E-ink keeps showing the last image with zero power.
 
-1. **Press any button** — wakes display, beeps current page (1 beep = newspaper, 2 = weather, 3 = maintenance)
-2. **Left or Right** — switch between pages, beeps change with selection
-3. **Green button** — confirms → ascending beep → refreshes to selected page → back to sleep
-4. Do nothing for 30 seconds → goes back to sleep, no change
-
-*E-ink keeps showing the last image even when "off" with zero power.*
-
-## Triggering a Wireless Refresh
-
-From the NUC (or any device on the network):
+## Wireless Refresh
 
 ```bash
-# E1002 (color)
-curl http://192.168.86.31:8088/trigger
-
-# E1001 (monochrome)
-curl http://192.168.86.31:8088/trigger-e1001
+curl http://YOUR_SERVER_IP:8088/trigger          # E1002 (color)
+curl http://YOUR_SERVER_IP:8088/trigger-e1001    # E1001 (mono)
 ```
 
-This pre-renders a fresh dashboard and sends a BLE wake signal. The ESP32 wakes within 60 seconds, fetches the page over WiFi, refreshes the display, and goes back to sleep.
+Pre-renders the dashboard and sends a BLE wake signal. Display wakes within 60 seconds, fetches over WiFi, refreshes, returns to sleep. BLE is best-effort — the 60-second timer wake is the reliable fallback.
 
-**BLE trigger latency:** ≤60 seconds (display checks for triggers every 60 seconds with a 10-second BLE advertising window).
+## Power
 
-## Power Profile
-
-| Mode | Power draw | Duration |
+| Mode | Draw | Duration |
 |---|---|---|
 | Deep sleep | ~50µA | 60s between checks |
 | BLE advertising | ~50mA | 10s window |
-| WiFi + display refresh | ~500mA | ~45s burst |
-| **Estimated battery life** | **3-4 weeks** | (2000mAh battery) |
+| WiFi + refresh | ~500mA | ~45s burst |
+| **Battery life** | **3-4 weeks** | 2000mAh |
 
-WiFi is only used when a BLE trigger is received, a button is pressed, or the 6-hour health refresh fires. No wasted WiFi cycles.
+WiFi only fires on BLE trigger, button press, or 6-hour health refresh.
 
 ## Server Endpoints
 
-| What it does | URL |
+| Endpoint | Description |
 |---|---|
-| Trigger E1002 refresh | `GET /trigger` |
-| Trigger E1001 refresh | `GET /trigger-e1001` |
-| E1002 framebuffer (4-bit nibble) | `GET /dashboard.bin?template=newspaper` |
-| E1001 framebuffer (1-bit packed) | `GET /dashboard-bw.bin?template=newspaper` |
-| Color-dithered preview (E1002) | `GET /dashboard.png?template=weather` |
-| BW-dithered preview (E1001) | `GET /dashboard-bw.png?template=newspaper` |
-| Full-color preview (before dither) | `GET /preview.png?template=newspaper` |
-| Health check | `GET /health` |
+| `GET /trigger` | Trigger E1002 refresh |
+| `GET /trigger-e1001` | Trigger E1001 refresh |
+| `GET /dashboard.bin?template=name` | E1002 framebuffer (192KB nibble-packed) |
+| `GET /dashboard-bw.bin?template=name` | E1001 framebuffer (48KB bit-packed) |
+| `GET /dashboard.png?template=name` | Color-dithered preview |
+| `GET /dashboard-bw.png?template=name` | BW-dithered preview |
+| `GET /preview.png?template=name` | Full-color preview (before dithering) |
+| `GET /health` | Health check |
 
-All at `http://192.168.86.31:8088`
+Templates: `newspaper`, `weather`, `maintenance`.
 
-## Build & Flash
+## Quick Setup
+
+See [`QUICKSTART.md`](QUICKSTART.md) for the full walkthrough. TL;DR:
 
 ```bash
-cd dev/projects/epaper-display/firmware
-
-# Build & flash E1001 (monochrome)
-pio run -e reterminal_e1001 -t upload --upload-port /dev/ttyUSB0
-
-# Build & flash E1002 (color)
-pio run -e seeed_xiao_esp32s3 -t upload --upload-port /dev/ttyUSB0
+git clone https://github.com/XanderLuciano/reterminal.git
+cd reterminal
+pip install -r requirements.txt && playwright install chromium
+cp firmware/src/wifi_config.h.example firmware/src/wifi_config.h  # edit with your WiFi
+# Edit firmware/src/main.cpp — change DASHBOARD_BASE_URL to your server's IP
+cd server && python3 server.py &
+cd ../firmware
+pio run -e reterminal_e1001 -t upload --upload-port /dev/ttyUSB0   # E1001
+# or: pio run -e seeed_xiao_esp32s3 -t upload --upload-port /dev/ttyUSB0  # E1002
 ```
-
-If you get "Permission denied" on `/dev/ttyUSB0`:
-```bash
-sudo chmod 666 /dev/ttyUSB0
-```
-
-**WiFi credentials:** Copy `firmware/src/wifi_config.h.example` → `wifi_config.h` and fill in your network. The real file is gitignored.
 
 ## Making It Your Own
 
-The default mock data is generic and demo-friendly. To personalize:
+- **Content:** Edit `server/server.py` → `get_mock_context()` — headlines, agenda, stats
+- **Weather location:** Update coordinates in `server/weather_provider.py`
+- **Layout:** Edit HTML templates in `server/templates/` — Jinja2, 800×480
+- **Newspaper name:** Change the masthead in `server/templates/newspaper.html`
+- **New page:** Create template → add context → add to `TEMPLATE_NAMES[]` in firmware → rebuild & flash
 
-### Edit content
-Edit `server/server.py` — the `get_mock_context()` function contains headlines, agenda items, and stats. Replace the demo data with your own.
-
-### Edit weather location
-Update the coordinates in `server/weather_provider.py` (NWS grid point) and the fallback location string.
-
-### Edit layout / design
-Edit the HTML templates in `server/templates/` — they're plain Jinja2 HTML rendered at 800×480 via Playwright. Restart the server and trigger a refresh to see changes.
-
-### Change the newspaper name
-Edit the masthead in `server/templates/newspaper.html` — replace "The Daily Glitch" with your own.
-
-```bash
-pm2 restart epaper-server
-curl http://localhost:8088/trigger
-```
-
-## Adding a New Page
-
-1. Create a new template in `server/templates/` (e.g., `calendar.html`)
-2. Add context data in `server/server.py` `get_mock_context()`
-3. Add the URL to `TEMPLATE_NAMES[]` array in `firmware/src/main.cpp`
-4. Update `NUM_PAGES` in `main.cpp`
-5. Rebuild and flash both displays
+Restart the server and trigger a refresh to see changes. Full details in [`QUICKSTART.md`](QUICKSTART.md).
 
 ## Project Layout
 
 ```
-epaper-display/
-├── firmware/                  # ESP32 code (PlatformIO + Arduino)
-│   ├── src/main.cpp           # Shared code, #ifdef per variant
-│   ├── src/wifi_config.h.example  # Template, gitignored real file
-│   └── platformio.ini         # Two envs: E1001 + E1002
-├── server/                    # Flask server on NUC
-│   ├── server.py              # Routes, mock data, trigger endpoints
-│   ├── renderer.py            # HTML→PNG→dither→pack (color + BW)
-│   ├── weather_provider.py    # NWS + Open-Meteo APIs (no keys)
-│   ├── ble_trigger.py         # BLE push to ESP32 (multi-device)
-│   └── templates/             # Shared page designs (Jinja2 HTML)
-├── QUICKSTART.md              # Zero-to-display guide (start here!)
-├── README.md                  # This file — full reference
+├── QUICKSTART.md              # Step-by-step setup (start here!)
+├── README.md                  # This file — overview & reference
 ├── HARDWARE.md                # Complete IO pin map & peripherals
-└── AI-MAP.md                  # Agent reference (debugging, internals)
+├── AI-MAP.md                  # Agent reference (routing, gotchas, data flows)
+├── requirements.txt           # Python dependencies
+├── server/                    # Flask dashboard renderer
+│   ├── server.py              # Routes, mock data
+│   ├── renderer.py            # HTML→PNG→dither→pack (color + BW)
+│   ├── weather_provider.py    # Live weather (free NWS API)
+│   ├── ble_trigger.py         # BLE push trigger
+│   └── templates/             # Jinja2 HTML (800×480)
+└── firmware/                  # ESP32-S3 (PlatformIO + Arduino)
+    ├── src/main.cpp           # Shared code, #ifdef per variant
+    ├── src/wifi_config.h.example
+    └── platformio.ini         # Two envs: reterminal_e1001, seeed_xiao_esp32s3
 ```
 
 ## Troubleshooting
 
-| Symptom | Likely cause | Fix |
-|---|---|---|
-| Display won't wake | Power switch off on back | Flip the switch |
-| BLE trigger not connecting | NUC Bluetooth stack (BlueZ) issue | Wait for next timer wake, or press a button |
-| Blank/white screen after refresh | PSRAM framebuffer corrupted | Trigger another refresh, check server logs |
-| Garbled/ghosted display | Format mismatch in GxEPD2 | Reflash — BW display getting nibble data or vice versa |
-| Buttons not responding | ESP32 in deep sleep | Press and hold for 1 sec, then release |
-| Server returns errors | Playwright or Python deps | `pm2 logs epaper-server` to check |
+| Symptom | Fix |
+|---|---|
+| Display won't wake | Check power switch on back |
+| BLE trigger not working | Wait for next 60s timer wake, or press a button |
+| Garbled display | BW display getting color data or vice versa — check build target |
+| Buttons don't respond | Press and hold for 1 second, then release |
+| Server errors | `pm2 logs epaper-server` or check terminal output |
 
-## Things to Know
+## Key Facts
 
-- **E1002 refresh is SLOW.** 25-45 seconds is normal for Spectra 6 color e-ink. E1001 (BW) is faster at ~5 seconds.
-- **No partial refresh on color.** E1002 always does full refresh. E1001 could theoretically do partial but doesn't currently.
-- **Image persists without power.** E-ink keeps showing whatever was last displayed even with zero power.
-- **Auto-refresh every 6 hours** prevents ghosting from static images.
-- **Separate BLE UUIDs.** Each device has its own service/characteristic UUIDs — triggers never cross-fire.
+- Separate BLE UUIDs per device — triggers never cross-fire
+- Image persists with zero power (e-ink)
+- Auto-refresh every 6 hours prevents ghosting
+- E1002 color refresh is SLOW (25-45s), E1001 BW is fast (~5s)
+- Default mock data is generic and demo-friendly
