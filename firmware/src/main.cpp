@@ -13,9 +13,9 @@
 // ── Shared config ──
 const int NUM_PAGES = 3;
 const char* TEMPLATE_NAMES[] = {"newspaper", "weather", "maintenance"};
-const uint64_t DEEP_SLEEP_SECONDS = 120;
-const int ADVERTISE_TIMEOUT_S = 30;
-const int HEALTH_INTERVAL_HOURS = 3;
+const uint64_t DEEP_SLEEP_SECONDS = 60;
+const int ADVERTISE_TIMEOUT_S = 10;
+const int HEALTH_INTERVAL_HOURS = 6;
 const int SELECT_TIMEOUT_S = 30;
 
 // EPD pins (same for both E1001 and E1002)
