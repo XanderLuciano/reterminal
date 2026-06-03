@@ -119,7 +119,7 @@ ChargeState readChargeState() {
   if (Wire1.endTransmission(false) != 0) {
     return CHG_NONE;  // charger not responding = no USB power
   }
-  Wire1.requestFrom(CHARGER_ADDR, (uint8_t)1);
+  Wire1.requestFrom((uint8_t)CHARGER_ADDR, (uint8_t)1);
   if (!Wire1.available()) return CHG_NONE;
 
   uint8_t reg = Wire1.read();
