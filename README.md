@@ -82,17 +82,38 @@ URL-based pages also supported — see [`url_pages.json`](server/url_pages.json)
 
 See [`QUICKSTART.md`](QUICKSTART.md) for the full walkthrough. TL;DR:
 
+### 🐳 Docker (recommended for the server)
+
 ```bash
 git clone https://github.com/XanderLuciano/reterminal.git
 cd reterminal
+docker compose up -d
+# → Server running at http://localhost:8088
+# → Web flasher at http://localhost:8088/flasher
+```
+
+Then [flash the firmware manually](#flash-firmware) — the browser handles USB via Web Serial.
+
+### 📦 Manual server
+
+```bash
 pip install -r requirements.txt && playwright install chromium
 cp firmware/src/wifi_config.h.example firmware/src/wifi_config.h  # edit with your WiFi
-# Edit firmware/src/main.cpp — change DASHBOARD_BASE_URL to your server's IP
 cd server && python3 server.py &
-cd ../firmware
+```
+
+### ⚡ Flash firmware (either way)
+
+```bash
+cd firmware
+cp src/wifi_config.h.example src/wifi_config.h  # set your WiFi SSID/password
+# Edit src/main.cpp — change DASHBOARD_BASE_URL to your server's IP or hostname
+
 pio run -e reterminal_e1001 -t upload --upload-port /dev/ttyUSB0   # E1001
 # or: pio run -e seeed_xiao_esp32s3 -t upload --upload-port /dev/ttyUSB0  # E1002
 ```
+
+**Or use the web flasher:** open `http://<server>:8088/flasher` in Chrome/Edge, configure WiFi/network settings in-browser, and flash over Web Serial. No PlatformIO install needed. The same page also has a **BLE trigger button** — wake your display wirelessly from the browser via Web Bluetooth.
 
 ## Making It Your Own
 
@@ -123,7 +144,13 @@ Restart the server and trigger a refresh to see changes. Full details in [`QUICK
 ├── README.md                  # This file — overview & reference
 ├── HARDWARE.md                # Complete IO pin map & peripherals
 ├── AI-MAP.md                  # Agent reference (routing, gotchas, data flows)
+├── Dockerfile                 # Containerized server + web flasher
+├── docker-compose.yml         # One-command: docker compose up -d
 ├── requirements.txt           # Python dependencies
+├── flasher/                   # Web flasher UI (served by Flask)
+│   ├── index.html             # Single-page config + flash UI
+│   ├── build_handler.py       # Async build backend (PlatformIO)
+│   └── builds/                # Build artifacts (gitignored)
 ├── server/                    # Flask dashboard renderer
 │   ├── server.py              # Routes, mock data
 │   ├── renderer.py            # HTML→PNG→dither→pack (color + BW)
@@ -136,6 +163,14 @@ Restart the server and trigger a refresh to see changes. Full details in [`QUICK
     └── platformio.ini         # Two envs: reterminal_e1001, seeed_xiao_esp32s3
 ```
 
+## Docker Notes
+
+- **Web Serial + Web Bluetooth work from browser** — the container only serves the UI. Flashing and BLE triggers happen client-side. No `--network=host`, no device passthrough, no privileged mode needed.
+- **PlatformIO runs inside the container** for builds — no local toolchain needed
+- **BLE triggers from the browser** via the flasher page — no Python/BLE dependency on the server at all
+- Rebuild after config changes: `docker compose up -d --build`
+- To customize, volume-mount config files or edit them on the host and restart the container
+
 ## Troubleshooting
 
 | Symptom | Fix |
@@ -144,7 +179,7 @@ Restart the server and trigger a refresh to see changes. Full details in [`QUICK
 | BLE trigger not working | Wait for next 60s timer wake, or press a button |
 | Garbled display | BW display getting color data or vice versa — check build target |
 | Buttons don't respond | Press and hold for 1 second, then release |
-| Server errors | `pm2 logs epaper-server` or check terminal output |
+| Server errors | `docker compose logs -f` |
 
 ## Key Facts
 

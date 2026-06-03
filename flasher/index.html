@@ -1,0 +1,714 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>E-Paper Flasher</title>
+<style>
+  :root {
+    --bg: #1a1a2e;
+    --card: #16213e;
+    --accent: #e94560;
+    --accent2: #0f3460;
+    --text: #eaeaea;
+    --muted: #aabbcc;
+    --green: #4ecca3;
+    --yellow: #f0a500;
+    --radius: 8px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    background: var(--bg); color: var(--text);
+    min-height: 100vh; display: flex; justify-content: center;
+    padding: 2rem 1rem;
+  }
+  .container { max-width: 640px; width: 100%; }
+  h1 { font-size: 1.5rem; margin-bottom: .25rem; display: flex; align-items: center; gap: .5rem; }
+  h1 .badge {
+    font-size: .7rem; font-weight: 600; background: var(--accent); color: #fff;
+    padding: .15rem .5rem; border-radius: 99px; text-transform: uppercase; letter-spacing: .5px;
+  }
+  .subtitle { color: var(--muted); font-size: .9rem; margin-bottom: 1.5rem; }
+
+  .card {
+    background: var(--card); border-radius: var(--radius);
+    padding: 1.25rem; margin-bottom: 1rem;
+  }
+  .card h2 {
+    font-size: 1rem; font-weight: 600;
+    margin-bottom: 1rem; color: var(--accent);
+  }
+  .card h2.success { color: var(--green); }
+
+  .field { margin-bottom: 1rem; }
+  .field label {
+    display: block; font-size: .82rem; font-weight: 500;
+    color: var(--muted); margin-bottom: .35rem;
+  }
+  .field input, .field select {
+    width: 100%; padding: .6rem .75rem;
+    background: var(--bg); border: 1px solid var(--accent2);
+    border-radius: var(--radius); color: var(--text);
+    font-size: .95rem; font-family: inherit;
+    transition: border-color .15s;
+  }
+  .field input:focus, .field select:focus {
+    outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(233,69,96,.15);
+  }
+  .field input.invalid {
+    border-color: var(--accent); box-shadow: 0 0 0 3px rgba(233,69,96,.2);
+  }
+  .field .hint { font-size: .75rem; color: var(--muted); margin-top: .25rem; }
+  .field .error-msg { font-size: .75rem; color: var(--accent); margin-top: .25rem; display: none; }
+  .field input.invalid + .hint + .error-msg,
+  .field input.invalid + .error-msg { display: block; }
+
+  .row { display: flex; gap: .75rem; }
+  .row .field { flex: 1; }
+
+  .input-group { position: relative; display: flex; }
+  .input-group input { flex: 1; padding-right: 2.5rem; }
+  .input-group .toggle-pw {
+    position: absolute; right: 0; top: 0; bottom: 0;
+    width: 2.5rem; background: none; border: none; color: var(--muted);
+    cursor: pointer; font-size: 1rem; display: flex; align-items: center; justify-content: center;
+    transition: color .15s;
+  }
+  .input-group .toggle-pw:hover { color: var(--text); }
+
+  .btn {
+    display: inline-flex; align-items: center; gap: .5rem;
+    padding: .65rem 1.25rem; border: none; border-radius: var(--radius);
+    font-size: .9rem; font-weight: 600; cursor: pointer;
+    font-family: inherit; transition: all .15s;
+  }
+  .btn:disabled { opacity: .4; cursor: not-allowed; }
+  .btn-primary { background: var(--accent); color: #fff; width: 100%; justify-content: center; }
+  .btn-primary:hover:not(:disabled) { background: #d63850; }
+  .btn-flash {
+    background: var(--green); color: #1a1a2e;
+    width: 100%; padding: .85rem; font-size: 1rem; justify-content: center;
+  }
+  .btn-flash:hover:not(:disabled) { background: #3cb893; }
+  .btn-outline {
+    background: transparent; border: 1px solid var(--accent2); color: var(--text);
+  }
+  .btn-outline:hover:not(:disabled) { border-color: var(--accent); }
+
+  .progress { margin-top: 1rem; }
+  .progress-bar {
+    height: 6px; background: var(--accent2); border-radius: 3px; overflow: hidden;
+  }
+  .progress-fill {
+    height: 100%; background: var(--accent);
+    transition: width .3s; border-radius: 3px;
+  }
+  .progress-fill.indeterminate {
+    width: 30% !important;
+    animation: slide 1.5s ease-in-out infinite;
+  }
+  @keyframes slide {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(400%); }
+  }
+  .progress-text {
+    font-size: .8rem; color: var(--muted); margin-top: .4rem;
+    font-family: 'SF Mono', 'Fira Code', monospace;
+  }
+
+  .status { margin-top: .75rem; font-size: .85rem; font-weight: 500; }
+  .status-ok { color: var(--green); }
+  .status-error { color: var(--accent); }
+  .status-building { color: var(--yellow); }
+
+  .log {
+    margin-top: .75rem; padding: .75rem;
+    background: var(--bg); border-radius: var(--radius);
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    font-size: .78rem; max-height: 200px; overflow-y: auto;
+    white-space: pre-wrap; color: var(--muted); line-height: 1.4;
+  }
+
+  .flash-card {
+    border: 2px solid var(--green); background: rgba(78,204,163,.05);
+  }
+
+  .device-select { display: flex; gap: .5rem; }
+  .device-select label {
+    flex: 1; display: block; padding: .75rem;
+    background: var(--bg); border: 2px solid var(--accent2);
+    border-radius: var(--radius); cursor: pointer; text-align: center;
+    transition: all .15s; position: relative;
+  }
+  .device-select label:hover { border-color: var(--muted); }
+  .device-select input[type="radio"] {
+    position: absolute; width: 1px; height: 1px;
+    overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap;
+  }
+  .device-select input[type="radio"]:focus-visible + span {
+    outline: 2px solid var(--accent); outline-offset: 3px;
+  }
+  .device-select label:has(input:checked) { border-color: var(--accent); }
+  .device-select input:checked + span {
+    color: var(--accent); font-weight: 600;
+  }
+  .device-select input:checked + span::after {
+    content: ' ✓'; color: var(--green);
+  }
+  .device-select .device-desc {
+    display: block; font-size: .75rem; color: var(--muted); font-weight: 400;
+  }
+
+  hr { border: none; border-top: 1px solid var(--accent2); margin: 1rem 0; }
+
+  .flash-instructions {
+    text-align: center; margin-top: .75rem; font-size: .82rem; color: var(--text);
+    line-height: 1.5;
+  }
+  .flash-instructions .strong { color: var(--yellow); font-weight: 600; }
+
+  .advanced-toggle {
+    text-align: center; margin-bottom: 1rem;
+  }
+  .advanced-toggle button {
+    font-size: .8rem; transition: color .15s;
+  }
+  .advanced-card {
+    max-height: 0; overflow: hidden; transition: max-height .3s ease, margin .3s ease;
+    margin-bottom: 0;
+  }
+  .advanced-card.open { max-height: 200px; margin-bottom: 1rem; }
+
+  .success-actions { margin-top: 1rem; }
+
+  .ble-trigger-section { margin-top: 2rem; }
+  .btn-ble {
+    background: var(--accent2); color: var(--text);
+    width: 100%; padding: .85rem; font-size: 1rem; justify-content: center;
+  }
+  .btn-ble:hover:not(:disabled) { background: #1a4a7a; }
+  .btn-ble.active { background: var(--green); color: #1a1a2e; }
+  .download-link {
+    display: block; color: var(--green); text-decoration: none; font-size: .82rem;
+    text-align: center; padding: .5rem 0;
+  }
+  .download-link:hover { text-decoration: underline; }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>🖥️ E-Paper Flasher <span class="badge">beta</span></h1>
+  <p class="subtitle">Configure &amp; flash your reTerminal E10xx from the browser</p>
+
+  <!-- Device Selection -->
+  <div class="card">
+    <h2>📟 Device</h2>
+    <div class="device-select" role="radiogroup" aria-label="Device type">
+      <label><input type="radio" name="device" value="e1002" checked onfocus="this.closest('label').style.outline='none'">
+        <span>E1002<span class="device-desc">Spectra 6 · 7-color</span></span></label>
+      <label><input type="radio" name="device" value="e1001">
+        <span>E1001<span class="device-desc">Monochrome · BW</span></span></label>
+    </div>
+  </div>
+
+  <!-- Network -->
+  <div class="card">
+    <h2>📶 Network</h2>
+    <div class="row">
+      <div class="field">
+        <label for="wifi-ssid">WiFi SSID</label>
+        <input type="text" id="wifi-ssid" placeholder="MyNetwork" maxlength="32" autocomplete="off">
+        <div class="error-msg">SSID is required</div>
+      </div>
+      <div class="field">
+        <label for="wifi-pass">WiFi Password</label>
+        <div class="input-group">
+          <input type="password" id="wifi-pass" placeholder="••••••••" maxlength="63" autocomplete="off">
+          <button type="button" class="toggle-pw" id="toggle-pw" aria-label="Show password" tabindex="-1">👁️</button>
+        </div>
+        <div class="error-msg">Password is required</div>
+      </div>
+    </div>
+    <div class="field">
+      <label for="dashboard-url">Dashboard Server URL</label>
+      <input type="text" id="dashboard-url" placeholder="http://192.168.1.x:8088">
+      <div class="hint">Full URL will be: your-server:8088<span id="url-suffix">/dashboard.bin</span></div>
+      <div class="error-msg">Server URL is required</div>
+    </div>
+  </div>
+
+  <!-- Timing -->
+  <div class="card">
+    <h2>⏱️ Timing</h2>
+    <div class="row">
+      <div class="field">
+        <label for="deep-sleep">Deep Sleep (seconds)</label>
+        <input type="number" id="deep-sleep" value="60" min="10" max="3600">
+        <div class="hint">Time between automatic refreshes</div>
+      </div>
+      <div class="field">
+        <label for="ble-timeout">BLE Advertise (seconds)</label>
+        <input type="number" id="ble-timeout" value="10" min="5" max="120">
+        <div class="hint">How long BLE listens for trigger</div>
+      </div>
+    </div>
+    <div class="row">
+      <div class="field">
+        <label for="health-interval">Health Refresh (hours)</label>
+        <input type="number" id="health-interval" value="6" min="1" max="48">
+        <div class="hint">Full WiFi refresh interval</div>
+      </div>
+      <div class="field">
+        <label for="select-timeout">Button Select Timeout (sec)</label>
+        <input type="number" id="select-timeout" value="30" min="5" max="120">
+        <div class="hint">How long button menu stays active</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Advanced -->
+  <div class="advanced-toggle">
+    <button class="btn btn-outline" id="advanced-toggle-btn" onclick="toggleAdvanced()" aria-expanded="false">
+      ⚙️ Advanced options ▾
+    </button>
+  </div>
+  <div class="card advanced-card" id="advanced-card">
+    <h2>⚙️ Advanced</h2>
+    <div class="field">
+      <label for="ble-name">BLE Device Name</label>
+      <input type="text" id="ble-name" placeholder="E1002-Dashboard" maxlength="20">
+      <div class="hint">Leave empty for default</div>
+    </div>
+  </div>
+
+  <!-- Build -->
+  <div class="card" id="build-card">
+    <h2>🔨 Build Firmware</h2>
+    <button class="btn btn-primary" id="build-btn" onclick="startBuild()">
+      ⚡ Build
+    </button>
+
+    <div class="progress" id="progress" style="display:none">
+      <div class="progress-bar">
+        <div class="progress-fill indeterminate" id="progress-fill"></div>
+      </div>
+      <div class="progress-text" id="progress-text">Initializing...</div>
+    </div>
+
+    <div class="status" id="status"></div>
+    <div class="log" id="log" style="display:none"></div>
+  </div>
+
+  <!-- BLE Trigger -->
+  <div class="card ble-trigger-section" id="ble-card">
+    <h2>📡 Trigger Wireless Refresh</h2>
+    <p style="font-size:.82rem;color:var(--muted);margin-bottom:.75rem;">
+      Wakes the display and fetches the latest dashboard over WiFi.
+      Requires <strong>Chrome or Edge</strong> with Bluetooth enabled.
+    </p>
+    <button class="btn btn-ble" id="ble-btn" onclick="triggerBLE()">
+      🅱️ Connect &amp; Trigger
+    </button>
+    <div class="status" id="ble-status"></div>
+    <div class="log" id="ble-log" style="display:none"></div>
+  </div>
+
+  <!-- Flash (shown after successful build) -->
+  <div class="card flash-card" id="flash-card" style="display:none">
+    <h2 class="success">🔌 Flash to Device</h2>
+    <button class="btn btn-flash" id="flash-btn" onclick="startFlash()">
+      Flash via USB
+    </button>
+    <div class="flash-instructions">
+      <span class="strong">①</span> Connect reTerminal via USB-C<br>
+      <span class="strong">②</span> Hold <span class="strong">BOOT</span>, press <span class="strong">RESET</span>, release <span class="strong">BOOT</span><br>
+      <span class="strong">③</span> Click Flash and select the serial port
+    </div>
+    <div class="success-actions">
+      <a class="download-link" id="download-link" href="#" download>💾 Download firmware.bin instead</a>
+    </div>
+  </div>
+</div>
+
+<!-- esptool-js from CDN -->
+<script type="module">
+  import { ESPLoader, Transport } from 'https://unpkg.com/esptool-js@0.5.2/bundle.js';
+  window.ESPLoader = ESPLoader;
+  window.Transport = Transport;
+</script>
+
+<script>
+  // ── State ──
+  let buildId = null;
+  let pollTimer = null;
+  let mergedUrl = null;
+  let logLines = [];
+
+  function log(msg) {
+    logLines.push(`[${new Date().toLocaleTimeString()}] ${msg}`);
+    const el = document.getElementById('log');
+    el.style.display = 'block';
+    el.textContent = logLines.slice(-15).join('\n');
+    el.scrollTop = el.scrollHeight;
+  }
+
+  function setStatus(msg, cls) {
+    const el = document.getElementById('status');
+    el.textContent = msg;
+    el.className = 'status ' + (cls || '');
+  }
+
+  // ── Password toggle ──
+  document.getElementById('toggle-pw').addEventListener('click', function() {
+    const input = document.getElementById('wifi-pass');
+    const isPassword = input.type === 'password';
+    input.type = isPassword ? 'text' : 'password';
+    this.textContent = isPassword ? '🙈' : '👁️';
+  });
+
+  // ── Device selection updates URL suffix & BLE placeholder ──
+  document.querySelectorAll('input[name="device"]').forEach(r => {
+    r.addEventListener('change', () => {
+      const isE1001 = r.value === 'e1001';
+      document.getElementById('ble-name').placeholder = isE1001 ? 'E1001-Dashboard' : 'E1002-Dashboard';
+      document.getElementById('url-suffix').textContent = isE1001 ? '/dashboard-bw.bin' : '/dashboard.bin';
+    });
+  });
+
+  // ── Advanced toggle ──
+  function toggleAdvanced() {
+    const card = document.getElementById('advanced-card');
+    const btn = document.getElementById('advanced-toggle-btn');
+    const open = card.classList.toggle('open');
+    btn.setAttribute('aria-expanded', open);
+    btn.innerHTML = open ? '⚙️ Advanced options ▴' : '⚙️ Advanced options ▾';
+  }
+
+  function getConfig() {
+    const device = document.querySelector('input[name="device"]:checked').value;
+    const bleName = document.getElementById('ble-name').value.trim();
+    return {
+      device: device,
+      wifi_ssid: document.getElementById('wifi-ssid').value,
+      wifi_password: document.getElementById('wifi-pass').value,
+      dashboard_url: document.getElementById('dashboard-url').value,
+      deep_sleep_seconds: parseInt(document.getElementById('deep-sleep').value) || 60,
+      advertise_timeout_s: parseInt(document.getElementById('ble-timeout').value) || 10,
+      health_interval_hours: parseInt(document.getElementById('health-interval').value) || 6,
+      select_timeout_s: parseInt(document.getElementById('select-timeout').value) || 30,
+      ble_device_name: bleName || undefined,
+    };
+  }
+
+  // ── Inline validation ──
+  function validateField(id, condition, msg) {
+    const el = document.getElementById(id);
+    const err = el.parentElement.querySelector('.error-msg');
+    if (!condition) {
+      el.classList.add('invalid');
+    } else {
+      el.classList.remove('invalid');
+    }
+    return condition;
+  }
+
+  function validateConfig(config) {
+    let valid = true;
+    if (!validateField('wifi-ssid', config.wifi_ssid.length > 0)) valid = false;
+    if (!validateField('wifi-pass', config.wifi_password.length > 0)) valid = false;
+    if (!validateField('dashboard-url', config.dashboard_url.length > 0)) valid = false;
+    return valid;
+  }
+
+  // Clear validation on input
+  document.querySelectorAll('input').forEach(el => {
+    el.addEventListener('input', () => el.classList.remove('invalid'));
+  });
+
+  // ── Build ──
+  async function startBuild() {
+    const config = getConfig();
+    if (!validateConfig(config)) {
+      setStatus('⚠️ Please fill in all required fields', 'status-error');
+      return;
+    }
+
+    const btn = document.getElementById('build-btn');
+    btn.disabled = true;
+    btn.textContent = '⏳ Building...';
+
+    document.getElementById('progress').style.display = 'block';
+    document.getElementById('progress-fill').classList.add('indeterminate');
+    document.getElementById('flash-card').style.display = 'none';
+    setStatus('Starting build...', 'status-building');
+    log('Build started for ' + config.device.toUpperCase());
+
+    try {
+      const resp = await fetch('/api/build', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(config),
+      });
+      if (!resp.ok) {
+        throw new Error(`Server returned ${resp.status}`);
+      }
+      const data = await resp.json();
+      buildId = data.build_id;
+      log('Build ID: ' + buildId);
+      pollBuild();
+    } catch (e) {
+      setStatus('❌ Failed to start build: ' + e.message, 'status-error');
+      log('ERROR: ' + e.message);
+      resetBuildUI();
+    }
+  }
+
+  function resetBuildUI() {
+    document.getElementById('build-btn').disabled = false;
+    document.getElementById('build-btn').textContent = '⚡ Build';
+    document.getElementById('progress').style.display = 'none';
+    document.getElementById('progress-fill').classList.remove('indeterminate');
+  }
+
+  function pollBuild() {
+    if (pollTimer) clearInterval(pollTimer);
+    pollTimer = setInterval(async () => {
+      try {
+        const resp = await fetch('/api/build/' + buildId);
+        const data = await resp.json();
+
+        document.getElementById('progress-text').textContent = data.message;
+
+        if (data.status === 'done') {
+          clearInterval(pollTimer);
+          document.getElementById('progress-fill').classList.remove('indeterminate');
+          document.getElementById('progress-fill').style.width = '100%';
+
+          setStatus('✅ Build complete! ' +
+            ((data.files?.merged_size || 0) / 1024).toFixed(0) + ' KB ready to flash.',
+            'status-ok');
+          log('Build complete!');
+
+          mergedUrl = data.files.merged;
+          document.getElementById('download-link').href = mergedUrl;
+          document.getElementById('flash-card').style.display = 'block';
+          document.getElementById('build-btn').disabled = false;
+          document.getElementById('build-btn').textContent = '🔄 Rebuild';
+
+          // Scroll flash card into view
+          document.getElementById('flash-card').scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+        } else if (data.status === 'error') {
+          clearInterval(pollTimer);
+          document.getElementById('progress-fill').classList.remove('indeterminate');
+          document.getElementById('progress-fill').style.width = '100%';
+          document.getElementById('progress-fill').style.background = 'var(--accent)';
+
+          setStatus('❌ Build failed — check log for details', 'status-error');
+          log('BUILD ERROR:\n' + data.message);
+          resetBuildUI();
+        }
+      } catch (e) {
+        // keep polling
+      }
+    }, 1000);
+  }
+
+  // ── Flash via Web USB ──
+  async function startFlash() {
+    const btn = document.getElementById('flash-btn');
+    btn.disabled = true;
+    btn.textContent = '🔌 Connecting...';
+    document.getElementById('progress').style.display = 'block';
+    document.getElementById('progress-fill').classList.add('indeterminate');
+    document.getElementById('progress-text').textContent = 'Waiting for device...';
+
+    try {
+      log('Requesting serial port — select your ESP32 device...');
+
+      if (!navigator.serial) {
+        throw new Error('Web Serial API not available. Use Chrome or Edge.');
+      }
+
+      const port = await navigator.serial.requestPort();
+      await port.open({ baudRate: 115200 });
+
+      const info = port.getInfo();
+      const deviceLabel = info.usbProductName || 'ESP32-S3';
+      log('Connected to ' + deviceLabel);
+      setStatus('Connected to ' + deviceLabel + '. Flashing...', 'status-building');
+
+      const transport = new window.Transport(port);
+      const loader = new window.ESPLoader({
+        transport: transport,
+        baudrate: 921600,
+        terminal: {
+          clean: () => {},
+          writeLine: (msg) => log('ESP: ' + msg),
+          write: () => {},
+        },
+      });
+
+      log('Entering bootloader...');
+      await loader.main();
+      log('Chip: ' + loader.chipName);
+
+      log('Downloading firmware...');
+      const resp = await fetch(mergedUrl);
+      const buf = await resp.arrayBuffer();
+      const binary = new Uint8Array(buf);
+      log(`Firmware: ${(binary.length / 1024).toFixed(1)} KB`);
+
+      const flashOptions = {
+        fileArray: [{ data: binary, address: 0x0 }],
+        flashSize: 'keep',
+        flashMode: 'keep',
+        flashFreq: 'keep',
+        eraseAll: false,
+        compress: true,
+        reportProgress: (fileIndex, written, total) => {
+          const pct = ((written / total) * 100).toFixed(0);
+          document.getElementById('progress-text').textContent = `Flashing: ${pct}%`;
+          document.getElementById('progress-fill').classList.remove('indeterminate');
+          document.getElementById('progress-fill').style.width = pct + '%';
+          document.getElementById('progress-fill').style.background = 'var(--accent)';
+        },
+      };
+      await loader.writeFlash(flashOptions);
+
+      log('Done! Resetting device...');
+      await loader.hardReset();
+
+      document.getElementById('progress-fill').style.width = '100%';
+      document.getElementById('progress-fill').style.background = 'var(--green)';
+      document.getElementById('progress-text').textContent = 'Flash complete!';
+      setStatus('✅ Flash complete! Device is rebooting.', 'status-ok');
+      log('SUCCESS: Flash complete!');
+      btn.textContent = '✅ Flashed!';
+      btn.style.background = 'var(--green)';
+
+    } catch (e) {
+      document.getElementById('progress-fill').classList.remove('indeterminate');
+
+      if (e.message?.includes('No port selected') || e.name === 'AbortError') {
+        log('Cancelled — no port selected');
+        setStatus('Flash cancelled — no device selected', 'status-ok');
+      } else if (e.message?.includes('Web Serial API not available')) {
+        log('ERROR: ' + e.message);
+        setStatus('❌ ' + e.message, 'status-error');
+      } else {
+        log('FLASH ERROR: ' + e.message);
+        setStatus('❌ Flash failed: ' + e.message, 'status-error');
+
+        // Common ESP32 flash errors — give helpful hints
+        if (e.message?.includes('timeout') || e.message?.includes('Failed to connect')) {
+          log('HINT: Make sure the device is in download mode.');
+          log('  Hold BOOT → press RESET → release BOOT.');
+          log('  Then try again.');
+        }
+      }
+      btn.disabled = false;
+      btn.textContent = '🔌 Try Again';
+    }
+  }
+  // ── BLE Trigger ──
+  // GATT service & characteristic UUIDs (matches ble_trigger.py / firmware)
+  const BLE_UUIDS = {
+    'e1002': {
+      serviceUUID: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890',
+      triggerUUID: 'b2c3d4e5-f6a7-8901-bcde-f12345678901',
+      deviceName: 'E1002-Dashboard',
+    },
+    'e1001': {
+      serviceUUID: 'c3d4e5f6-a7b8-9012-cdef-123456789012',
+      triggerUUID: 'd4e5f6a7-b8c9-0123-defa-234567890123',
+      deviceName: 'E1001-Dashboard',
+    },
+  };
+
+  function bleLog(msg) {
+    const el = document.getElementById('ble-log');
+    el.style.display = 'block';
+    el.textContent += '[' + new Date().toLocaleTimeString() + '] ' + msg + '\n';
+    el.scrollTop = el.scrollHeight;
+  }
+
+  function clearBLELog() {
+    document.getElementById('ble-log').textContent = '';
+    document.getElementById('ble-log').style.display = 'none';
+  }
+
+  function setBLEStatus(msg, cls) {
+    const el = document.getElementById('ble-status');
+    el.textContent = msg;
+    el.className = 'status ' + (cls || '');
+  }
+
+  async function triggerBLE() {
+    const btn = document.getElementById('ble-btn');
+    const device = document.querySelector('input[name="device"]:checked').value;
+    const config = BLE_UUIDS[device];
+
+    if (!navigator.bluetooth) {
+      setBLEStatus('❌ Web Bluetooth not available. Use Chrome or Edge.', 'status-error');
+      bleLog('ERROR: Web Bluetooth API not found');
+      return;
+    }
+
+    btn.disabled = true;
+    btn.textContent = '🔄 Scanning...';
+    clearBLELog();
+
+    try {
+      bleLog('Requesting BLE device — select your ' + config.deviceName + ' from the list...');
+
+      const device = await navigator.bluetooth.requestDevice({
+        filters: [{ name: config.deviceName }],
+        optionalServices: [config.serviceUUID],
+      });
+
+      bleLog('Found: ' + (device.name || 'unnamed'));
+
+      const server = await device.gatt.connect();
+      bleLog('Connected!');
+
+      const service = await server.getPrimaryService(config.serviceUUID);
+      const characteristic = await service.getCharacteristic(config.triggerUUID);
+
+      bleLog('Writing trigger...');
+      await characteristic.writeValue(new Uint8Array([0x01]));
+
+      setBLEStatus('✅ Trigger sent! Display will refresh within 60 seconds.', 'status-ok');
+      bleLog('SUCCESS: Trigger written');
+      btn.textContent = '✅ Triggered!';
+      btn.classList.add('active');
+
+      // Disconnect
+      if (device.gatt.connected) {
+        device.gatt.disconnect();
+        bleLog('Disconnected');
+      }
+
+      // Reset button after a few seconds
+      setTimeout(() => {
+        btn.disabled = false;
+        btn.textContent = '🅱️ Connect & Trigger';
+        btn.classList.remove('active');
+      }, 3000);
+
+    } catch (e) {
+      if (e.name === 'NotFoundError') {
+        setBLEStatus('Cancelled — no device selected', 'status-ok');
+        bleLog('Cancelled');
+      } else {
+        setBLEStatus('❌ BLE trigger failed: ' + e.message, 'status-error');
+        bleLog('ERROR: ' + e.message);
+      }
+      btn.disabled = false;
+      btn.textContent = '🅱️ Connect & Trigger';
+    }
+  }
+</script>
+</body>
+</html>

@@ -7,12 +7,17 @@ Usage:
     → http://localhost:8088/preview.png    (full color preview without dithering)
 """
 import io
+import sys
 from datetime import datetime
 from pathlib import Path
-from flask import Flask, Response, request
+from flask import Flask, Response, request, send_from_directory
 from renderer import render_html, dither_spectra6, render_dashboard_raw, render_dashboard_raw_bw, dither_bw
 from weather_provider import fetch_weather
 from url_renderer import get_page_binary, get_page_png, get_page_meta, start as start_url_renderer, list_pages
+
+# Import build handler for web flasher
+sys.path.insert(0, str(Path(__file__).parent.parent / "flasher"))
+from build_handler import start_build, get_build_status
 
 HERE = Path(__file__).parent
 app = Flask(__name__)
@@ -416,6 +421,45 @@ def list_url_pages():
     """List all configured URL pages."""
     pages = list_pages()
     return {"pages": pages, "count": len(pages)}
+
+
+# ── Web Flasher UI ──
+
+FLASHER_DIR = HERE.parent / "flasher"
+
+
+@app.route("/flasher")
+@app.route("/flasher/")
+def flasher_ui():
+    return send_from_directory(str(FLASHER_DIR), "index.html")
+
+
+# ── Build API ──
+
+@app.route("/api/build", methods=["POST"])
+def api_start_build():
+    """Start a firmware build with the given config."""
+    config = request.get_json(force=True)
+    build_id = start_build(config)
+    return {"build_id": build_id, "status": "started"}
+
+
+@app.route("/api/build/<build_id>")
+def api_build_status(build_id):
+    """Poll build status."""
+    status = get_build_status(build_id)
+    if status is None:
+        return {"error": "Build not found"}, 404
+    return status
+
+
+@app.route("/api/build/<build_id>/<path:filename>")
+def api_build_download(build_id, filename):
+    """Download a build artifact."""
+    build_dir = FLASHER_DIR / "builds" / build_id
+    if not build_dir.exists():
+        return {"error": "Build not found"}, 404
+    return send_from_directory(str(build_dir), filename)
 
 
 if __name__ == "__main__":

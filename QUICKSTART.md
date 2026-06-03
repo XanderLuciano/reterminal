@@ -17,21 +17,8 @@ Step-by-step from `git clone` to a wireless e-ink dashboard. ~10 minutes.
 
 - reTerminal E1001 (monochrome) or E1002 (color)
 - USB-C cable for flashing
-- Linux/macOS machine with WiFi + Bluetooth
-
-### Install tools
-
-```bash
-# PlatformIO CLI
-curl -fsSL https://raw.githubusercontent.com/platformio/platformio-core-installer/master/get-platformio.py -o get-platformio.py
-python3 get-platformio.py
-
-# Python dependencies
-pip install -r requirements.txt
-
-# Playwright browser (for HTML→PNG rendering)
-playwright install chromium
-```
+- A machine to run the server (any OS with Docker, or Python 3.11+)
+- Linux/macOS for local firmware builds; or use the web flasher
 
 ## 1. Clone & Configure
 
@@ -47,7 +34,7 @@ cp firmware/src/wifi_config.h.example firmware/src/wifi_config.h
 ```
 
 ### Server IP
-Edit `firmware/src/main.cpp` — change both `DASHBOARD_BASE_URL` entries to your server's IP.
+Edit `firmware/src/main.cpp` — change both `DASHBOARD_BASE_URL` entries to your server's IP or hostname.
 
 ### Weather (optional)
 Edit `server/weather_provider.py`:
@@ -56,17 +43,44 @@ Edit `server/weather_provider.py`:
 
 ## 2. Start Server
 
+Choose one:
+
+### 🐳 Docker (easiest)
 ```bash
+docker compose up -d
+# → http://localhost:8088
+```
+
+No Python, no Playwright, no dependencies to install on the host.
+
+### 📦 Manual
+```bash
+pip install -r requirements.txt
+playwright install chromium
+
 cd server
 python3 server.py
 # → http://0.0.0.0:8088
 ```
 
-Verify: `curl http://localhost:8088/health` → `{"status":"ok"}`
+Verify either way: `curl http://localhost:8088/health` → `{"status":"ok"}`
 
 ## 3. Flash Display
 
-Plug in your reTerminal via USB-C.
+Plug in your reTerminal via USB-C. Two options:
+
+### 🌐 Web Flasher (no local PlatformIO needed)
+
+With the server running (Docker or manual), open `http://<server>:8088/flasher` in **Chrome or Edge** (Web Serial required).
+
+1. Select your display type (E1001 / E1002)
+2. Enter WiFi SSID/password and network settings
+3. Click Build → wait for PlatformIO to compile (inside the container if using Docker)
+4. Click Flash — browser connects to your ESP32-S3 via USB, downloads the firmware, and flashes it
+
+No USB passthrough to Docker. No PlatformIO install. The browser handles everything.
+
+### 🔧 Manual (PlatformIO CLI)
 
 ```bash
 cd firmware
