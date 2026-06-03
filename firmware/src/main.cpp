@@ -56,7 +56,9 @@ const int SELECT_TIMEOUT_S = 30;
   const char* DASHBOARD_BASE_URL = "http://YOUR_SERVER_IP:8088/dashboard.bin";
   const size_t FB_SIZE = (800UL * 480UL + 1) / 2;   // 4-bit nibble packed
 
-  GxEPD2_7C<GxEPD2_730c_GDEP073E01, GxEPD2_730c_GDEP073E01::HEIGHT>
+  // Reduced page height to minimize _pixel_buffer BSS in DRAM.
+  // writeImage()+refresh() bypasses the page system entirely.
+  GxEPD2_7C<GxEPD2_730c_GDEP073E01, 48>
     display(GxEPD2_730c_GDEP073E01(EPD_CS, EPD_DC, EPD_RES, EPD_BUSY));
 #elif defined(E1001_VARIANT)
   #define BLE_DEVICE_NAME "E1001-Dashboard"
