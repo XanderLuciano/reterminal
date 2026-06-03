@@ -207,15 +207,16 @@ void showPage(int page) {
   if (!framebuf) return;
   display.init(0);  // re-init after deep sleep (controller loses power)
   display.setFullWindow();
-  display.firstPage();
-  do {
 #ifdef E1002_VARIANT
-    display.loadImageBuffer(framebuf, FB_SIZE);
+  // Write nibble-packed framebuf to controller memory, then refresh.
+  // This avoids loadImageBuffer which isn't available in all GxEPD2 versions.
+  display.writeImage(framebuf, 0, 0, 800, 480);
+  display.refresh();
 #elif defined(E1001_VARIANT)
-    display.fillScreen(GxEPD_WHITE);
-    display.drawBitmap(0, 0, framebuf, 800, 480, GxEPD_BLACK);
+  display.fillScreen(GxEPD_WHITE);
+  display.drawBitmap(0, 0, framebuf, 800, 480, GxEPD_BLACK);
+  display.refresh();
 #endif
-  } while (display.nextPage());
   rtc_active_page = page;
   framebuf = nullptr;
 }
