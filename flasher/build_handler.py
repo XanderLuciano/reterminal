@@ -86,7 +86,7 @@ def _do_build(build_id: str, config: dict):
             cwd=FIRMWARE_DIR,
             capture_output=True,
             text=True,
-            timeout=180,
+            timeout=600,  # 10 min — cold PlatformIO builds need to download toolchains
         )
 
         # Restore original main.cpp immediately
