@@ -2,11 +2,15 @@
 Firmware build handler for the web flasher.
 Accepts config JSON, generates wifi_config.h + config overrides, runs pio run,
 and returns merged firmware binary ready for esptool-js flashing.
+
+Build output is streamed line-by-line into the build state so the
+frontend can show real-time progress instead of staring at a spinner.
 """
 import json
 import shutil
 import subprocess
 import threading
+import time
 from pathlib import Path
 
 HERE = Path(__file__).parent
@@ -19,7 +23,7 @@ DEVICE_ENVS = {
     "e1001": "reterminal_e1001",
 }
 
-# In-progress builds: {build_id: {"status": "building"|"done"|"error", "message": str, "files": dict}}
+# In-progress builds: {build_id: {"status": ..., "message": ..., "lines": [str], "files": dict}}
 _builds: dict = {}
 _builds_lock = threading.Lock()
 _build_counter = 0
@@ -40,28 +44,98 @@ def start_build(config: dict) -> str:
     """Kick off an async build, return build_id."""
     build_id = _next_build_id()
     with _builds_lock:
-        _builds[build_id] = {"status": "queued", "message": "Build queued", "files": {}}
+        _builds[build_id] = {
+            "status": "queued",
+            "message": "Build queued",
+            "lines": [],
+            "files": {},
+        }
 
     thread = threading.Thread(target=_do_build, args=(build_id, config), daemon=True)
     thread.start()
     return build_id
 
 
-def _do_build(build_id: str, config: dict):
+def _push_line(build_id: str, line: str):
+    """Append a line to the build log and update the status message."""
     with _builds_lock:
-        _builds[build_id]["status"] = "building"
-        _builds[build_id]["message"] = "Generating configuration..."
+        if build_id not in _builds:
+            return
+        build = _builds[build_id]
+        build.setdefault("lines", []).append(line)
+        # Keep last 200 lines for memory
+        if len(build["lines"]) > 200:
+            build["lines"] = build["lines"][-200:]
+        # Derive a brief status from the last meaningful line
+        _derive_message(build, line)
+
+
+def _derive_message(build: dict, line: str):
+    """Extract a human-readable one-liner from PlatformIO output."""
+    line_s = line.strip()
+
+    # PlatformIO download progress lines: "Downloading... |█████▋    | 137/268 KB"
+    if "Downloading" in line_s and ("|" in line_s or "KB" in line_s):
+        build["message"] = line_s[:80]
+        build["status"] = "building"
+        return
+
+    # Download status lines: "Library Manager: Installing ..."
+    if "Installing" in line_s or "Unpacking" in line_s or "Already up-to-date" in line_s:
+        build["message"] = line_s[:80]
+        return
+
+    # Tool download: "Downloading espressif/toolchain-xtensa-esp32s3@..."
+    if line_s.startswith("Downloading") and "espressif" in line_s:
+        name = line_s.split(" ")[1].split("@")[0].split("/")[-1]
+        build["message"] = f"Downloading toolchain: {name}..."
+        return
+
+    # Compilation: "Compiling .pio/build/seeed_xiao_esp32s3/lib/..."
+    if line_s.startswith("Compiling"):
+        parts = line_s.split("/")
+        if len(parts) > 2:
+            # Show last few path components
+            short = "/".join(parts[-3:])[:60]
+            build["message"] = f"Compiling {short}..."
+        return
+
+    # Linker: "Linking .pio/build/..."
+    if "Linking" in line_s:
+        build["message"] = "Linking firmware..."
+        return
+
+    # Processing library: "Library Manager: Processing ..."
+    if "Processing" in line_s and "Library" in line_s:
+        build["message"] = line_s[:70]
+        return
+
+    # Error lines — keep them as the visible message
+    if "error:" in line_s.lower() or "Error:" in line_s:
+        build["message"] = line_s[:80]
+        build["status"] = "error"
+        return
+
+    # Generic fallback for known PIO patterns
+    if line_s and not line_s.startswith(" ") and not line_s.startswith("|") and len(line_s) > 10:
+        build["message"] = line_s[:80]
+
+
+def _do_build(build_id: str, config: dict):
+    _push_line(build_id, "Generating configuration...")
 
     device = config.get("device", "e1002")
     env = DEVICE_ENVS.get(device)
     if not env:
+        _push_line(build_id, f"ERROR: Unknown device '{device}'")
         with _builds_lock:
-            _builds[build_id] = {"status": "error", "message": f"Unknown device: {device}", "files": {}}
+            if build_id in _builds:
+                _builds[build_id]["status"] = "error"
         return
 
     try:
         # 1. Write wifi_config.h
-        _update("Writing WiFi config...", build_id)
+        _push_line(build_id, "Writing WiFi config...")
         ssid = config.get("wifi_ssid", "YourWiFiNetwork")
         password = config.get("wifi_password", "YourWiFiPassword")
         _write_wifi_config(ssid, password)
@@ -70,88 +144,101 @@ def _do_build(build_id: str, config: dict):
         main_cpp = SRC_DIR / "main.cpp"
         backup_path = main_cpp.with_suffix(".cpp.webflasher.bak")
 
-        # Read original
         original = main_cpp.read_text()
-
-        # Apply config overrides
         patched = _patch_main_cpp(original, config, device)
-
-        # Write patched version
         main_cpp.write_text(patched)
 
-        # 3. Run PlatformIO build
-        _update("Compiling firmware (this takes 1–2 minutes)...", build_id)
-        result = subprocess.run(
+        # 3. Run PlatformIO build with live streaming
+        _push_line(build_id, "Starting PlatformIO build...")
+
+        process = subprocess.Popen(
             ["pio", "run", "-e", env],
             cwd=FIRMWARE_DIR,
-            capture_output=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
             text=True,
-            timeout=600,  # 10 min — cold PlatformIO builds need to download toolchains
+            bufsize=1,  # line-buffered
         )
+
+        # Read lines until the process finishes
+        start_time = time.time()
+        build_timeout = 600  # 10 minutes
+        returncode = None
+
+        for raw_line in process.stdout:
+            line = raw_line.rstrip("\n\r")
+            _push_line(build_id, line)
+
+            # Check timeout
+            if time.time() - start_time > build_timeout:
+                process.kill()
+                _push_line(build_id, "TIMEOUT: Build exceeded 10 minutes")
+                _push_line(build_id, "First-time PlatformIO builds download toolchains.")
+                _push_line(build_id, "The container may need: pio platform install espressif32")
+                _restore_main_cpp()
+                with _builds_lock:
+                    if build_id in _builds:
+                        _builds[build_id]["status"] = "error"
+                return
+
+        process.wait()
+        returncode = process.returncode
 
         # Restore original main.cpp immediately
         main_cpp.write_text(original)
         if backup_path.exists():
             backup_path.unlink()
 
-        if result.returncode != 0:
-            error_msg = result.stderr[-500:] if result.stderr else "Unknown build error"
+        if returncode != 0:
+            _push_line(build_id, "BUILD FAILED (see errors above)")
             with _builds_lock:
-                _builds[build_id] = {"status": "error", "message": f"Build failed:\n{error_msg}", "files": {}}
+                if build_id in _builds:
+                    _builds[build_id]["status"] = "error"
             return
 
         # 4. Locate build artifacts
-        _update("Packaging firmware for flashing...", build_id)
+        _push_line(build_id, "Build succeeded! Packaging firmware...")
         build_dir = FIRMWARE_DIR / ".pio" / "build" / env
         factory_bin = build_dir / "firmware.factory.bin"
         firmware = build_dir / "firmware.bin"
 
         if not factory_bin.exists():
+            _push_line(build_id, "ERROR: Missing build artifact firmware.factory.bin")
             with _builds_lock:
-                _builds[build_id] = {"status": "error", "message": "Missing build artifact: firmware.factory.bin", "files": {}}
+                if build_id in _builds:
+                    _builds[build_id]["status"] = "error"
             return
 
-        # 5. Copy artifacts to a stable output dir, serve by build_id
+        # 5. Copy artifacts to output dir
         output_dir = HERE / "builds" / build_id
         output_dir.mkdir(parents=True, exist_ok=True)
-
-        # firmware.factory.bin is a complete image starting at 0x0
-        # (includes bootloader, partitions, and firmware all at correct offsets)
         shutil.copy2(factory_bin, output_dir / "firmware.factory.bin")
         if firmware.exists():
             shutil.copy2(firmware, output_dir / "firmware.bin")
-
-        # 6. Save the config used (for display)
         (output_dir / "config.json").write_text(json.dumps(config, indent=2))
 
         merged_size = factory_bin.stat().st_size
+        _push_line(build_id, f"Done — {merged_size / 1024:.0f} KB ready")
 
         with _builds_lock:
-            _builds[build_id] = {
-                "status": "done",
-                "message": "Build complete",
-                "files": {
-                    "merged": f"/api/build/{build_id}/firmware.factory.bin",
-                    "firmware": f"/api/build/{build_id}/firmware.bin",
-                    "merged_size": merged_size,
-                },
-                "config": config,
-            }
+            if build_id in _builds:
+                _builds[build_id].update({
+                    "status": "done",
+                    "message": f"Build complete ({merged_size / 1024:.0f} KB)",
+                    "files": {
+                        "merged": f"/api/build/{build_id}/firmware.factory.bin",
+                        "firmware": f"/api/build/{build_id}/firmware.bin",
+                        "merged_size": merged_size,
+                    },
+                    "config": config,
+                })
 
-    except subprocess.TimeoutExpired:
-        _restore_main_cpp()
-        with _builds_lock:
-            _builds[build_id] = {"status": "error", "message": "Build timed out (>3 minutes)", "files": {}}
     except Exception as e:
         _restore_main_cpp()
+        _push_line(build_id, f"ERROR: {e}")
         with _builds_lock:
-            _builds[build_id] = {"status": "error", "message": str(e), "files": {}}
-
-
-def _update(message: str, build_id: str):
-    with _builds_lock:
-        if build_id in _builds:
-            _builds[build_id]["message"] = message
+            if build_id in _builds:
+                _builds[build_id]["status"] = "error"
 
 
 def _escape_c_string(s: str) -> str:
@@ -175,29 +262,23 @@ def _patch_main_cpp(source: str, config: dict, device: str) -> str:
     result = []
 
     for line in lines:
-        # Deep sleep seconds
         if "const uint64_t DEEP_SLEEP_SECONDS" in line and "Deep sleep" not in line:
             val = config.get("deep_sleep_seconds", 60)
             result.append(f"const uint64_t DEEP_SLEEP_SECONDS = {val};")
-        # BLE advertise timeout
         elif "const int ADVERTISE_TIMEOUT_S" in line:
             val = config.get("advertise_timeout_s", 10)
             result.append(f"const int ADVERTISE_TIMEOUT_S = {val};")
-        # Health interval
         elif "const int HEALTH_INTERVAL_HOURS" in line:
             val = config.get("health_interval_hours", 6)
             result.append(f"const int HEALTH_INTERVAL_HOURS = {val};")
-        # Select timeout
         elif "const int SELECT_TIMEOUT_S" in line:
             val = config.get("select_timeout_s", 30)
             result.append(f"const int SELECT_TIMEOUT_S = {val};")
-        # Dashboard base URL
         elif 'const char* DASHBOARD_BASE_URL' in line:
             url = config.get("dashboard_url", "http://YOUR_SERVER_IP:8088")
             fb = "/dashboard.bin" if device == "e1002" else "/dashboard-bw.bin"
             full_url = url.rstrip("/") + fb
             result.append(f'  const char* DASHBOARD_BASE_URL = "{full_url}";')
-        # BLE device names
         elif "#define BLE_DEVICE_NAME" in line:
             default_name = "E1001-Dashboard" if device == "e1001" else "E1002-Dashboard"
             name = config.get("ble_device_name", default_name)

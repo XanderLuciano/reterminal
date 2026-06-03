@@ -345,6 +345,21 @@
   let pollTimer = null;
   let mergedUrl = null;
   let logLines = [];
+  let lastShownLines = 0;
+
+  function renderBuildLog(lines) {
+    if (!lines || lines.length === 0) return;
+    const el = document.getElementById('log');
+    el.style.display = 'block';
+    const newLines = lines.slice(lastShownLines);
+    if (newLines.length === 0) return;
+    for (const line of newLines) {
+      logLines.push(line);
+    }
+    el.textContent = logLines.slice(-50).join('\n');
+    el.scrollTop = el.scrollHeight;
+    lastShownLines = lines.length;
+  }
 
   function log(msg) {
     logLines.push(`[${new Date().toLocaleTimeString()}] ${msg}`);
@@ -443,6 +458,10 @@
     document.getElementById('progress-fill').classList.add('indeterminate');
     document.getElementById('flash-card').style.display = 'none';
     document.getElementById('progress-hint').textContent = 'First build downloads toolchains — may take 2–5 min';
+    document.getElementById('log').style.display = 'none';
+    document.getElementById('log').textContent = '';
+    lastShownLines = 0;
+    logLines = [];
     setStatus('Starting build...', 'status-building');
     log('Build started for ' + config.device.toUpperCase());
 
@@ -481,6 +500,7 @@
         const data = await resp.json();
 
         document.getElementById('progress-text').textContent = data.message;
+        renderBuildLog(data.lines);
 
         if (data.status === 'done') {
           clearInterval(pollTimer);
