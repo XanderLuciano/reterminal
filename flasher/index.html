@@ -305,8 +305,8 @@
   <div class="card ble-trigger-section" id="ble-card">
     <h2>📡 Trigger Wireless Refresh</h2>
     <p style="font-size:.82rem;color:var(--muted);margin-bottom:.75rem;">
-      Sends a BLE wake trigger via the server. The display must be awake
-      and advertising (wakes briefly every 60s, or press any button).
+      Wakes the display and fetches the latest dashboard over WiFi.
+      Requires <strong>Chrome or Edge</strong> with Bluetooth enabled.
     </p>
     <button class="btn btn-ble" id="ble-btn" onclick="triggerBLE()">
       🅱️ Connect &amp; Trigger
@@ -800,7 +800,20 @@
       btn.textContent = '🔌 Try Again';
     }
   }
-  // ── BLE Trigger (via server API — avoids Web Bluetooth HTTPS requirement) ──
+  // ── BLE Trigger ──
+  // GATT service & characteristic UUIDs (matches ble_trigger.py / firmware)
+  const BLE_UUIDS = {
+    'e1002': {
+      serviceUUID: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890',
+      triggerUUID: 'b2c3d4e5-f6a7-8901-bcde-f12345678901',
+      deviceName: 'E1002-Dashboard',
+    },
+    'e1001': {
+      serviceUUID: 'c3d4e5f6-a7b8-9012-cdef-123456789012',
+      triggerUUID: 'd4e5f6a7-b8c9-0123-defa-234567890123',
+      deviceName: 'E1001-Dashboard',
+    },
+  };
 
   function bleLog(msg) {
     const el = document.getElementById('ble-log');
@@ -823,42 +836,66 @@
   async function triggerBLE() {
     const btn = document.getElementById('ble-btn');
     const device = document.querySelector('input[name="device"]:checked').value;
+    const config = BLE_UUIDS[device];
+
+    if (!navigator.bluetooth) {
+      setBLEStatus('❌ Web Bluetooth not available. Use Chrome or Edge.', 'status-error');
+      bleLog('ERROR: Web Bluetooth API not found');
+      return;
+    }
 
     btn.disabled = true;
-    btn.textContent = '🔄 Triggering via server...';
+    btn.textContent = '🔄 Scanning...';
     clearBLELog();
 
     try {
-      bleLog('Calling server BLE trigger for ' + device.toUpperCase() + '...');
+      bleLog('Requesting BLE device — select your ' + config.deviceName + ' from the list...');
 
-      const endpoint = device === 'e1002' ? '/trigger' : '/trigger-e1001';
-      const resp = await fetch(endpoint, { method: 'POST' });
-      const data = await resp.json();
+      const device = await navigator.bluetooth.requestDevice({
+        filters: [{ name: config.deviceName }],
+        optionalServices: [config.serviceUUID],
+      });
 
-      if (resp.ok) {
-        bleLog(data.message || 'OK');
-        bleLog(data.ble || 'BLE status unknown');
-        setBLEStatus('✅ Trigger sent via server! Display will refresh soon.', 'status-ok');
-        btn.textContent = '✅ Triggered!';
-        btn.classList.add('active');
-      } else {
-        bleLog('Server error: ' + (data.error || resp.status));
-        setBLEStatus('❌ Server returned error', 'status-error');
-        btn.textContent = '🅱️ Retry';
+      bleLog('Found: ' + (device.name || 'unnamed'));
+
+      const server = await device.gatt.connect();
+      bleLog('Connected!');
+
+      const service = await server.getPrimaryService(config.serviceUUID);
+      const characteristic = await service.getCharacteristic(config.triggerUUID);
+
+      bleLog('Writing trigger...');
+      await characteristic.writeValue(new Uint8Array([0x01]));
+
+      setBLEStatus('✅ Trigger sent! Display will refresh within 60 seconds.', 'status-ok');
+      bleLog('SUCCESS: Trigger written');
+      btn.textContent = '✅ Triggered!';
+      btn.classList.add('active');
+
+      // Disconnect
+      if (device.gatt.connected) {
+        device.gatt.disconnect();
+        bleLog('Disconnected');
       }
-    } catch (e) {
-      bleLog('ERROR: ' + e.message);
-      setBLEStatus('❌ Failed to reach server: ' + e.message, 'status-error');
-      btn.disabled = false;
-      btn.textContent = '🅱️ Retry';
-    }
 
-    // Reset button after a few seconds
-    setTimeout(() => {
+      // Reset button after a few seconds
+      setTimeout(() => {
+        btn.disabled = false;
+        btn.textContent = '🅱️ Connect & Trigger';
+        btn.classList.remove('active');
+      }, 3000);
+
+    } catch (e) {
+      if (e.name === 'NotFoundError') {
+        setBLEStatus('Cancelled — no device selected', 'status-ok');
+        bleLog('Cancelled');
+      } else {
+        setBLEStatus('❌ BLE trigger failed: ' + e.message, 'status-error');
+        bleLog('ERROR: ' + e.message);
+      }
       btn.disabled = false;
       btn.textContent = '🅱️ Connect & Trigger';
-      btn.classList.remove('active');
-    }, 3000);
+    }
   }
 </script>
 </body>
