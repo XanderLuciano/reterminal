@@ -53,10 +53,9 @@ COPY . .
 # If you're not using the web flasher, you can skip the PlatformIO install below.
 
 # PlatformIO + esptool (needed for web flasher builds)
-# esptool is installed separately for reliable `python3 -m esptool` access —
-# PlatformIO's internal copy lives in ~/.platformio/packages and varies by version.
-RUN pip install --no-cache-dir platformio esptool && \
-    pio platform install "espressif32" 2>/dev/null || true
+# Pinned versions for deterministic Docker builds across machines.
+RUN pip install --no-cache-dir platformio==6.1.19 esptool==5.2.0 && \
+    pio platform install "espressif32 @ 55.3.38" 2>/dev/null || true
 
 EXPOSE 8088
 
