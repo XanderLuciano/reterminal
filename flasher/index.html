@@ -348,17 +348,17 @@
   let lastShownLines = 0;
   let flashPort = null;
 
-  // Close port without nulling — allows Transport to reopen same port object
+  function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+  // Aggressively release the port — close + forget browser permission.
+  // On some OS/driver combos (macOS CH34x) the port may not release
+  // immediately, so callers should add a short sleep after this.
   async function disconnectFlashPort() {
     if (flashPort) {
       try { await flashPort.close(); } catch (e) { /* best-effort */ }
+      try { await flashPort.forget(); } catch (e) { /* best-effort */ }
+      flashPort = null;
     }
-  }
-
-  // Full reset: close + clear. Used on success/final-failure so next
-  // 'Try Again' shows the device picker fresh.
-  function resetFlashPort() {
-    flashPort = null;
   }
 
   function renderBuildLog(lines) {
@@ -560,8 +560,9 @@
     document.getElementById('progress-fill').classList.add('indeterminate');
     document.getElementById('progress-text').textContent = 'Waiting for device...';
 
-    // Always disconnect previous failed session first
+    // Always fully release previous failed session first
     await disconnectFlashPort();
+    await sleep(500);  // let OS release the port
 
     try {
       if (!navigator.serial) {
@@ -598,7 +599,12 @@
           log(`⚠ Serial error — retrying at ${baud / 1000} kbps...`);
           setStatus('Retrying at lower speed (' + (baud / 1000) + ' kbps)...', 'status-building');
           document.getElementById('progress-fill').classList.add('indeterminate');
+          // Full release — close + forget + wait for OS to let go
           await disconnectFlashPort();
+          await sleep(1000);
+          // Re-request a fresh port (needed because forget() invalidated old one)
+          log('Re-requesting serial port...');
+          flashPort = await navigator.serial.requestPort();
         }
 
         try {
@@ -642,9 +648,8 @@
           log('Done! Resetting device...');
           await loader.hardReset();
 
-          // Success — clean up fully
+          // Success — clean up
           await disconnectFlashPort();
-          resetFlashPort();
 
           document.getElementById('progress-fill').style.width = '100%';
           document.getElementById('progress-fill').style.background = 'var(--green)';
@@ -659,6 +664,14 @@
           lastError = innerErr;
           const msg = innerErr.message || '';
 
+          // Handle "port already open" — release and let outer loop re-request
+          if (msg.includes('already open') && i < baudRates.length - 1) {
+            log('Port stuck open — releasing and retrying...');
+            await disconnectFlashPort();
+            await sleep(1000);
+            continue; // Fall through to next baud rate with fresh port
+          }
+
           // Detect serial corruption / noise errors
           const isSerialCorruption =
             msg.includes('stream stopped') ||
@@ -671,7 +684,7 @@
             continue; // Fall through to next baud rate
           }
 
-          throw innerErr; // Not a serial error, or last attempt — re-throw
+          throw innerErr; // Not recoverable, or last attempt — re-throw
         }
       }
 
@@ -680,7 +693,6 @@
 
     } catch (e) {
       await disconnectFlashPort();
-      resetFlashPort();  // clear so next try shows device picker
       document.getElementById('progress-fill').classList.remove('indeterminate');
 
       if (e.message?.includes('No port selected') || e.name === 'AbortError') {
