@@ -630,16 +630,19 @@
     document.getElementById('progress-fill').classList.add('indeterminate');
     document.getElementById('progress-text').textContent = 'Waiting for device...';
 
-    // Full release of previous session — forget() revokes stale permission
-    // so the next requestPort() gives us a genuinely fresh port
-    await forgetFlashPort();
-    await sleep(1500);  // macOS CH34x needs time to release
+    // Release previous session first (fast — must complete within gesture window)
+    if (flashPort) {
+      try { await flashPort.close(); } catch (e) {}
+      flashPort = null;
+    }
 
     try {
       if (!navigator.serial) {
         throw new Error('Web Serial API not available. Use Chrome or Edge.');
       }
 
+      // CRITICAL: requestPort() must happen while the user gesture is still
+      // alive (~1s window). No sleeps, no awaits before this call.
       log('Requesting serial port — select your ESP32 device...');
       flashPort = await navigator.serial.requestPort();
 
@@ -677,12 +680,11 @@
           log(`⚠ Serial error — retrying at ${baud / 1000} kbps...`);
           setStatus('Retrying at lower speed (' + (baud / 1000) + ' kbps)...', 'status-building');
           document.getElementById('progress-fill').classList.add('indeterminate');
-          // Full release with forget() — the ESP32 stub is in a bad state
-          // after corruption; we need a clean reset via re-plug or fresh picker
-          await forgetFlashPort();
-          await sleep(2000);  // macOS CH34x needs generous time
-          log('Re-requesting serial port...');
-          flashPort = await navigator.serial.requestPort();
+          // Close port (but keep reference — Transport.can reopen it)
+          // requestPort() needs user gesture; port.open() does not.
+          try { await flashPort.close(); } catch (e) {}
+          await sleep(1000);  // let OS release
+          log('Reconnecting at ' + (baud / 1000) + ' kbps...');
         }
 
         try {
