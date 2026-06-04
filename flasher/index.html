@@ -323,8 +323,8 @@
     </button>
     <div class="flash-instructions">
       <span class="strong">①</span> Connect reTerminal via USB-C<br>
-      <span class="strong">②</span> Hold <span class="strong">BOOT</span>, press <span class="strong">RESET</span>, release <span class="strong">BOOT</span><br>
-      <span class="strong">③</span> Click Flash and select the serial port
+      <span class="strong">②</span> Click <strong>Flash via USB</strong> and select the serial port<br>
+      <span style="font-size:.75rem;color:var(--muted);display:block;margin-top:.25rem">Auto-reset handles everything — no button presses needed.<br>If flashing fails, try: hold BOOT → press RESET → release BOOT → retry.</span>
     </div>
     <div class="success-actions">
       <a class="download-link" id="download-link" href="#" download>💾 Download firmware.bin instead</a>
@@ -554,7 +554,8 @@
       }
 
       const port = await navigator.serial.requestPort();
-      await port.open({ baudRate: 115200 });
+      // Don't open the port — esptool-js Transport handles that.
+      // Opening first causes "port is already open" error.
 
       const info = port.getInfo();
       const deviceLabel = info.usbProductName || 'ESP32-S3';
@@ -625,9 +626,9 @@
 
         // Common ESP32 flash errors — give helpful hints
         if (e.message?.includes('timeout') || e.message?.includes('Failed to connect')) {
-          log('HINT: Make sure the device is in download mode.');
+          log('HINT: Auto-reset may have failed. Try manual download mode:');
           log('  Hold BOOT → press RESET → release BOOT.');
-          log('  Then try again.');
+          log('  Then click Try Again.');
         }
       }
       btn.disabled = false;
