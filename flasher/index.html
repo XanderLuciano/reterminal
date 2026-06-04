@@ -315,9 +315,24 @@
     <div class="log" id="ble-log" style="display:none"></div>
   </div>
 
-  <!-- Flash (shown after successful build) -->
+  <!-- Local file upload (always visible, no server build needed) -->
+  <div class="card" id="local-file-card">
+    <h2>📁 Flash Local Firmware</h2>
+    <p style="font-size:.82rem;color:var(--muted);margin-bottom:.75rem;">
+      Skip the server build — flash a <code style="background:var(--bg);padding:.1rem .3rem;border-radius:3px">firmware.bin</code> you already have.
+    </p>
+    <input type="file" id="local-file-input" accept=".bin" style="display:none" onchange="handleLocalFile(event)">
+    <button class="btn btn-outline" id="local-file-btn" onclick="document.getElementById('local-file-input').click()">
+      📂 Choose firmware.bin
+    </button>
+    <span id="local-file-name" style="font-size:.82rem;color:var(--green);margin-left:.75rem;display:none"></span>
+    <button class="btn btn-outline" id="local-file-clear" style="display:none;margin-left:.5rem" onclick="clearLocalFile()">✕</button>
+  </div>
+
+  <!-- Flash (shown after successful build or local file selected) -->
   <div class="card flash-card" id="flash-card" style="display:none">
     <h2 class="success">🔌 Flash to Device</h2>
+    <div id="flash-source-hint" style="font-size:.75rem;color:var(--muted);margin-bottom:.75rem"></div>
     <button class="btn btn-flash" id="flash-btn" onclick="startFlash()">
       Flash via USB
     </button>
@@ -326,7 +341,7 @@
       <span class="strong">②</span> Click <strong>Flash via USB</strong> and select the serial port<br>
       <span style="font-size:.75rem;color:var(--muted);display:block;margin-top:.25rem">Auto-reset handles everything — no button presses needed.<br>If flashing fails, try: hold BOOT → press RESET → release BOOT → retry.</span>
     </div>
-    <div class="success-actions">
+    <div class="success-actions" id="download-actions" style="display:none">
       <a class="download-link" id="download-link" href="#" download>💾 Download firmware.bin instead</a>
     </div>
   </div>
@@ -347,6 +362,7 @@
   let logLines = [];
   let lastShownLines = 0;
   let flashPort = null;
+  let localBinary = null;  // Uint8Array from local file upload (bypasses server build)
 
   function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
@@ -367,6 +383,51 @@
       try { await flashPort.close(); } catch (e) { /* best-effort */ }
       try { await flashPort.forget(); } catch (e) { /* best-effort */ }
       flashPort = null;
+    }
+  }
+
+  // ── Local file upload ──
+  function handleLocalFile(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    document.getElementById('local-file-name').textContent = file.name + ' (' + (file.size / 1024).toFixed(1) + ' KB)';
+    document.getElementById('local-file-name').style.display = 'inline';
+    document.getElementById('local-file-clear').style.display = 'inline-block';
+    document.getElementById('local-file-btn').textContent = '📂 Change file';
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      localBinary = new Uint8Array(reader.result);
+      log('Loaded local file: ' + file.name + ' (' + (localBinary.length / 1024).toFixed(1) + ' KB)');
+      showFlashCard('local', file.name);
+    };
+    reader.readAsArrayBuffer(file);
+  }
+
+  function clearLocalFile() {
+    localBinary = null;
+    document.getElementById('local-file-input').value = '';
+    document.getElementById('local-file-name').style.display = 'none';
+    document.getElementById('local-file-clear').style.display = 'none';
+    document.getElementById('local-file-btn').textContent = '📂 Choose firmware.bin';
+    // Only hide flash card if there's no server build either
+    if (!mergedUrl) {
+      document.getElementById('flash-card').style.display = 'none';
+    }
+  }
+
+  function showFlashCard(source, detail) {
+    const card = document.getElementById('flash-card');
+    const hint = document.getElementById('flash-source-hint');
+    const dlActions = document.getElementById('download-actions');
+    card.style.display = 'block';
+    if (source === 'local') {
+      hint.textContent = 'Source: 📁 ' + detail;
+      dlActions.style.display = 'none';
+    } else if (source === 'build') {
+      hint.textContent = 'Source: 🔨 Server build (' + detail + ')';
+      dlActions.style.display = 'block';
     }
   }
 
@@ -537,7 +598,7 @@
 
           mergedUrl = data.files.merged;
           document.getElementById('download-link').href = mergedUrl;
-          document.getElementById('flash-card').style.display = 'block';
+          showFlashCard('build', ((data.files?.merged_size || 0) / 1024).toFixed(0) + ' KB');
           document.getElementById('build-btn').disabled = false;
           document.getElementById('build-btn').textContent = '🔄 Rebuild';
 
@@ -587,12 +648,18 @@
       log('Connected to ' + deviceLabel);
       setStatus('Connected to ' + deviceLabel + '. Flashing...', 'status-building');
 
-      // Download firmware once
-      log('Downloading firmware...');
-      const resp = await fetch(mergedUrl);
-      const buf = await resp.arrayBuffer();
-      const binary = new Uint8Array(buf);
-      log(`Firmware: ${(binary.length / 1024).toFixed(1)} KB`);
+      // Get firmware binary — local file takes priority over server build
+      let binary;
+      if (localBinary) {
+        binary = localBinary;
+        log('Using local file (' + (binary.length / 1024).toFixed(1) + ' KB)');
+      } else {
+        log('Downloading firmware...');
+        const resp = await fetch(mergedUrl);
+        const buf = await resp.arrayBuffer();
+        binary = new Uint8Array(buf);
+        log(`Firmware: ${(binary.length / 1024).toFixed(1)} KB`);
+      }
 
       const baudRates = [921600, 115200];
       let lastError = null;
