@@ -223,6 +223,36 @@ void showPage(int page) {
   framebuf = nullptr;
 }
 
+// ── Error display ──
+
+void showError(const char* msg) {
+  display.init(0);
+  display.setFullWindow();
+  display.firstPage();
+  do {
+    display.fillScreen(GxEPD_WHITE);
+    display.setCursor(30, 200);
+    display.setTextColor(GxEPD_BLACK);
+    display.println("⚠️ Connection Error");
+    display.println();
+    display.setCursor(30, 260);
+    display.println(msg);
+    display.setCursor(30, 310);
+    display.println("Check WiFi or server.");
+    display.setCursor(30, 360);
+    display.println("Press any button to retry.");
+  } while (display.nextPage());
+  delay(1000);
+
+  // Wait for button press before going back to sleep
+  while (digitalRead(BTN_LEFT) == HIGH &&
+         digitalRead(BTN_RIGHT) == HIGH &&
+         digitalRead(BTN_GREEN) == HIGH) {
+    delay(50);
+  }
+  delay(200);  // debounce
+}
+
 // ── Button selection ──
 
 int selectPage(int currentPage) {
@@ -271,6 +301,7 @@ void startBLE() {
   NimBLEService* pService = pServer->createService(SERVICE_UUID);
   NimBLECharacteristic* pTrigger = pService->createCharacteristic(TRIGGER_UUID, NIMBLE_PROPERTY::WRITE);
   pTrigger->setCallbacks(new TriggerCallbacks());
+  pService->start();
   NimBLEAdvertising* pAdv = NimBLEDevice::getAdvertising();
   pAdv->addServiceUUID(SERVICE_UUID);
   pAdv->setMinInterval(32);
@@ -284,9 +315,16 @@ void startBLE() {
 // ── Core flow ──
 
 void refreshAndShow(int page) {
-  if (!connectWiFi()) return;
+  if (!connectWiFi()) {
+    showError("WiFi connection failed.");
+    return;
+  }
   int battery = readBatteryPercent();
-  if (!fetchPage(page, battery)) { WiFi.disconnect(true); return; }
+  if (!fetchPage(page, battery)) {
+    WiFi.disconnect(true);
+    showError("Failed to fetch dashboard.");
+    return;
+  }
   WiFi.disconnect(true);
   showPage(page);
   rtc_sleep_cycles = 0;
