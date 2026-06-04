@@ -838,10 +838,24 @@
     const device = document.querySelector('input[name="device"]:checked').value;
     const config = BLE_UUIDS[device];
 
+    // Check Web Bluetooth support
     if (!navigator.bluetooth) {
-      setBLEStatus('❌ Web Bluetooth not available. Use Chrome or Edge.', 'status-error');
-      bleLog('ERROR: Web Bluetooth API not found');
+      setBLEStatus('❌ Web Bluetooth not available. Use Chrome or Edge on desktop.', 'status-error');
+      bleLog('ERROR: navigator.bluetooth is undefined');
+      bleLog('HINT: Requires Chrome/Edge + HTTPS (or localhost)');
       return;
+    }
+
+    // Check if Bluetooth is available and powered on
+    try {
+      const available = await navigator.bluetooth.getAvailability();
+      if (!available) {
+        setBLEStatus('❌ Bluetooth is off or unavailable. Check system settings.', 'status-error');
+        bleLog('ERROR: Bluetooth adapter not available');
+        return;
+      }
+    } catch (e) {
+      bleLog('WARN: Could not check Bluetooth availability: ' + e.message);
     }
 
     btn.disabled = true;
@@ -849,30 +863,40 @@
     clearBLELog();
 
     try {
-      bleLog('Requesting BLE device — select your ' + config.deviceName + ' from the list...');
+      bleLog('Opening device picker — look for ' + config.deviceName + '...');
+      bleLog('(If the list is empty, the display may be in deep sleep.');
+      bleLog(' Wake it by pressing any button, then click "Connect & Trigger" again.)');
 
       const device = await navigator.bluetooth.requestDevice({
-        filters: [{ name: config.deviceName }],
+        filters: [
+          { name: config.deviceName },
+          { services: [config.serviceUUID] },
+        ],
         optionalServices: [config.serviceUUID],
       });
 
-      bleLog('Found: ' + (device.name || 'unnamed'));
+      bleLog('Selected: ' + (device.name || 'unnamed') + ' (' + (device.id || 'no-id') + ')');
 
+      bleLog('Connecting GATT...');
       const server = await device.gatt.connect();
-      bleLog('Connected!');
+      bleLog('GATT connected');
 
+      bleLog('Getting primary service...');
       const service = await server.getPrimaryService(config.serviceUUID);
-      const characteristic = await service.getCharacteristic(config.triggerUUID);
+      bleLog('Service found');
 
-      bleLog('Writing trigger...');
-      await characteristic.writeValue(new Uint8Array([0x01]));
+      bleLog('Getting trigger characteristic...');
+      const characteristic = await service.getCharacteristic(config.triggerUUID);
+      bleLog('Characteristic found, writing trigger...');
+
+      await characteristic.writeValueWithoutResponse(new Uint8Array([0x01]));
 
       setBLEStatus('✅ Trigger sent! Display will refresh within 60 seconds.', 'status-ok');
       bleLog('SUCCESS: Trigger written');
       btn.textContent = '✅ Triggered!';
       btn.classList.add('active');
 
-      // Disconnect
+      // Clean disconnect
       if (device.gatt.connected) {
         device.gatt.disconnect();
         bleLog('Disconnected');
@@ -886,15 +910,21 @@
       }, 3000);
 
     } catch (e) {
+      bleLog('ERROR [' + e.name + ']: ' + e.message);
+
       if (e.name === 'NotFoundError') {
         setBLEStatus('Cancelled — no device selected', 'status-ok');
-        bleLog('Cancelled');
+      } else if (e.name === 'SecurityError') {
+        setBLEStatus('❌ Security error — page must be served over HTTPS', 'status-error');
+        bleLog('HINT: Web Bluetooth requires HTTPS (or localhost)');
+      } else if (e.name === 'NetworkError') {
+        setBLEStatus('❌ GATT connection failed. Device may have gone to sleep.', 'status-error');
+        bleLog('HINT: Try pressing a button on the display to wake it first');
       } else {
         setBLEStatus('❌ BLE trigger failed: ' + e.message, 'status-error');
-        bleLog('ERROR: ' + e.message);
       }
       btn.disabled = false;
-      btn.textContent = '🅱️ Connect & Trigger';
+      btn.textContent = '🅱️ Retry';
     }
   }
 </script>
