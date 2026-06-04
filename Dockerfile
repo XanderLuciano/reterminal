@@ -52,8 +52,10 @@ COPY . .
 # which imports from it. The /api/build endpoint runs PlatformIO builds.
 # If you're not using the web flasher, you can skip the PlatformIO install below.
 
-# PlatformIO (needed for web flasher builds)
-RUN pip install --no-cache-dir platformio && \
+# PlatformIO + esptool (needed for web flasher builds)
+# esptool is installed separately for reliable `python3 -m esptool` access —
+# PlatformIO's internal copy lives in ~/.platformio/packages and varies by version.
+RUN pip install --no-cache-dir platformio esptool && \
     pio platform install "espressif32" 2>/dev/null || true
 
 EXPOSE 8088

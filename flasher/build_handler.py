@@ -224,7 +224,13 @@ def _do_build(build_id: str, config: dict):
                 """Return (python_bin, esptool_path_or_flag) or (None, None)."""
                 candidates = []
 
-                # 1: PlatformIO penv Python + tool-esptoolpy (modern installs)
+                # 1: System Python with esptool package (pip install esptool)
+                # This is the most reliable path — works in Docker, Linux, macOS.
+                for py in ("python3", "python"):
+                    if shutil.which(py):
+                        candidates.append((py, "-m esptool"))
+
+                # 2: PlatformIO penv Python + tool-esptoolpy (modern installs)
                 penv = Path.home() / ".platformio" / "penv" / "bin"
                 for py_name in ("python3", "python"):
                     py = penv / py_name
@@ -233,7 +239,7 @@ def _do_build(build_id: str, config: dict):
                             candidates.append((str(py), str(ep)))
                         break
 
-                # 2: Python from pio's shebang (pipx/venv installs)
+                # 3: Python from pio shebang (pipx/venv installs)
                 pio_bin = shutil.which("pio")
                 if pio_bin:
                     try:
@@ -242,15 +248,9 @@ def _do_build(build_id: str, config: dict):
                         if shebang.startswith("#!") and "python" in shebang:
                             pio_python = shebang[2:].strip()
                             if Path(pio_python).exists():
-                                # Try `python -m esptool` from this Python
                                 candidates.append((pio_python, "-m esptool"))
                     except Exception:
                         pass
-
-                # 3: System Python with esptool package
-                for py in ("python3", "python"):
-                    if shutil.which(py):
-                        candidates.append((py, "-m esptool"))
 
                 # 4: Search for any esptool.py under .platformio
                 for ep in Path.home().glob(".platformio/**/esptool.py"):
