@@ -726,7 +726,7 @@
           await loader.writeFlash(flashOptions);
 
           log('Done! Resetting device...');
-          await loader.hardReset();
+          await loader.after();  // hard_reset (was hardReset() in older esptool-js)
 
           // Clean shutdown: disconnect transport first, then close port
           try { await transport.disconnect(); } catch (e) { /* best-effort */ }
