@@ -232,8 +232,8 @@
     </div>
     <div class="field">
       <label for="dashboard-url">Dashboard Server URL</label>
-      <input type="text" id="dashboard-url" placeholder="http://192.168.1.x:8088">
-      <div class="hint">Full URL will be: your-server:8088<span id="url-suffix">/dashboard.bin</span></div>
+      <input type="text" id="dashboard-url" placeholder="">
+      <div class="hint">ESP32 fetches: <strong id="url-preview">/dashboard.bin</strong></div>
       <div class="error-msg">Server URL is required</div>
     </div>
   </div>
@@ -467,12 +467,28 @@
     this.textContent = isPassword ? '🙈' : '👁️';
   });
 
-  // ── Device selection updates URL suffix & BLE placeholder ──
+  // ── Dashboard URL: default to current server origin ──
+  const urlInput = document.getElementById('dashboard-url');
+  if (!urlInput.value) {
+    urlInput.value = window.location.origin;
+  }
+
+  function updateUrlPreview() {
+    const base = urlInput.value || window.location.origin;
+    const isE1001 = document.querySelector('input[name="device"]:checked').value === 'e1001';
+    const path = isE1001 ? '/dashboard-bw.bin' : '/dashboard.bin';
+    document.getElementById('url-preview').textContent =
+      base.replace(/\/$/, '') + path + '?template=...&battery=...';
+  }
+  urlInput.addEventListener('input', updateUrlPreview);
+  updateUrlPreview();
+
+  // ── Device selection updates BLE placeholder & URL preview ──
   document.querySelectorAll('input[name="device"]').forEach(r => {
     r.addEventListener('change', () => {
       const isE1001 = r.value === 'e1001';
       document.getElementById('ble-name').placeholder = isE1001 ? 'E1001-Dashboard' : 'E1002-Dashboard';
-      document.getElementById('url-suffix').textContent = isE1001 ? '/dashboard-bw.bin' : '/dashboard.bin';
+      updateUrlPreview();
     });
   });
 
