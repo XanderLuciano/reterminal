@@ -53,9 +53,12 @@ COPY . .
 # If you're not using the web flasher, you can skip the PlatformIO install below.
 
 # PlatformIO + esptool (needed for web flasher builds)
-# Pinned versions for deterministic Docker builds across machines.
+# platformio + esptool versions pinned; platform installs @ latest.
+# The platform version varies across machines (registry vs CI build number).
+# What matters for determinism: framework version, library versions, and
+# build flags — all of which are pinned below or in platformio.ini.
 RUN pip install --no-cache-dir platformio==6.1.19 esptool==5.2.0 && \
-    pio platform install "espressif32 @ 55.3.38" 2>/dev/null || true
+    pio platform install "espressif32" 2>/dev/null || true
 
 EXPOSE 8088
 
