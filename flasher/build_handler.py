@@ -219,17 +219,80 @@ def _do_build(build_id: str, config: dict):
                     if build_id in _builds:
                         _builds[build_id]["status"] = "error"
                 return
-            # Find esptool from PlatformIO's penv (has rich_click dep).
-            penv_python = Path.home() / ".platformio" / "penv" / "bin" / "python"
-            esptool_py = Path.home() / ".platformio" / "packages" / "tool-esptoolpy" / "esptool.py"
-            if not penv_python.exists() or not esptool_py.exists():
-                _push_line(build_id, "ERROR: Cannot find esptool — PlatformIO install may be incomplete")
+            # Find esptool — search multiple locations for cross-platform compatibility.
+            def _find_esptool():
+                """Return (python_bin, esptool_path_or_flag) or (None, None)."""
+                candidates = []
+
+                # 1: PlatformIO penv Python + tool-esptoolpy (modern installs)
+                penv = Path.home() / ".platformio" / "penv" / "bin"
+                for py_name in ("python3", "python"):
+                    py = penv / py_name
+                    if py.exists():
+                        for ep in Path.home().glob(".platformio/packages/tool-esptoolpy/esptool.py"):
+                            candidates.append((str(py), str(ep)))
+                        break
+
+                # 2: Python from pio's shebang (pipx/venv installs)
+                pio_bin = shutil.which("pio")
+                if pio_bin:
+                    try:
+                        with open(pio_bin) as f:
+                            shebang = f.readline().strip()
+                        if shebang.startswith("#!") and "python" in shebang:
+                            pio_python = shebang[2:].strip()
+                            if Path(pio_python).exists():
+                                # Try `python -m esptool` from this Python
+                                candidates.append((pio_python, "-m esptool"))
+                    except Exception:
+                        pass
+
+                # 3: System Python with esptool package
+                for py in ("python3", "python"):
+                    if shutil.which(py):
+                        candidates.append((py, "-m esptool"))
+
+                # 4: Search for any esptool.py under .platformio
+                for ep in Path.home().glob(".platformio/**/esptool.py"):
+                    for py in ("python3", "python"):
+                        if shutil.which(py):
+                            candidates.append((py, str(ep)))
+                            break
+                        break
+
+                # Try each candidate
+                for py_bin, esptool_arg in candidates:
+                    try:
+                        if esptool_arg == "-m esptool":
+                            test = subprocess.run(
+                                [py_bin, "-m", "esptool", "--help"],
+                                capture_output=True, text=True, timeout=10)
+                        else:
+                            test = subprocess.run(
+                                [py_bin, esptool_arg, "--help"],
+                                capture_output=True, text=True, timeout=10)
+                        if test.returncode == 0 or "usage:" in test.stderr.lower():
+                            return (py_bin, esptool_arg)
+                    except Exception:
+                        continue
+
+                return (None, None)
+
+            py_bin, esptool_arg = _find_esptool()
+            if not py_bin:
+                _push_line(build_id, "ERROR: Cannot find esptool — install PlatformIO or pip install esptool")
                 with _builds_lock:
                     if build_id in _builds:
                         _builds[build_id]["status"] = "error"
                 return
-            _push_line(build_id, "Merging flash image...")
-            cmds = [str(penv_python), str(esptool_py),
+
+            _push_line(build_id, f"Merging flash image (via {py_bin} {esptool_arg})...")
+            cmd_parts = [py_bin]
+            if esptool_arg == "-m esptool":
+                cmd_parts += ["-m", "esptool"]
+            else:
+                cmd_parts.append(esptool_arg)
+            cmd_parts += [
                 "--chip", "esp32s3", "merge-bin",
                 "-o", str(factory_bin.absolute()),
                 "--flash-mode", "dio", "--flash-size", "8MB",
@@ -243,9 +306,9 @@ def _do_build(build_id: str, config: dict):
                     boot_app0 = fw_dir
                     break
             if boot_app0.exists():
-                cmds += ["0xe000", str(boot_app0.absolute())]
-            cmds += ["0x10000", str(firmware.absolute())]
-            result = subprocess.run(cmds, capture_output=True, text=True, timeout=30)
+                cmd_parts += ["0xe000", str(boot_app0.absolute())]
+            cmd_parts += ["0x10000", str(firmware.absolute())]
+            result = subprocess.run(cmd_parts, capture_output=True, text=True, timeout=30)
 
             if result.returncode != 0:
                 err = result.stderr[-300:] if result.stderr else "Unknown error"
