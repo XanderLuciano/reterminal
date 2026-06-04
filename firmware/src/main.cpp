@@ -53,7 +53,7 @@ const int SELECT_TIMEOUT_S = 30;
   #define BLE_DEVICE_NAME "E1002-Dashboard"
   #define SERVICE_UUID     "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
   #define TRIGGER_UUID     "b2c3d4e5-f6a7-8901-bcde-f12345678901"
-  const char* DASHBOARD_BASE_URL = "http://YOUR_SERVER_IP:8088/dashboard.bin";
+  const char* DASHBOARD_BASE_URL = "http://1.2.3.4:8088/dashboard.bin";
   const size_t FB_SIZE = (800UL * 480UL + 1) / 2;   // 4-bit nibble packed
 
   // Reduced page height to minimize _pixel_buffer BSS in DRAM.
@@ -61,10 +61,10 @@ const int SELECT_TIMEOUT_S = 30;
   GxEPD2_7C<GxEPD2_730c_GDEP073E01, 48>
     display(GxEPD2_730c_GDEP073E01(EPD_CS, EPD_DC, EPD_RES, EPD_BUSY));
 #elif defined(E1001_VARIANT)
-  #define BLE_DEVICE_NAME "E1001-Dashboard"
+  #define BLE_DEVICE_NAME "E1002-Dashboard"
   #define SERVICE_UUID     "c3d4e5f6-a7b8-9012-cdef-123456789012"
   #define TRIGGER_UUID     "d4e5f6a7-b8c9-0123-defa-234567890123"
-  const char* DASHBOARD_BASE_URL = "http://YOUR_SERVER_IP:8088/dashboard-bw.bin";
+  const char* DASHBOARD_BASE_URL = "http://1.2.3.4:8088/dashboard.bin";
   const size_t FB_SIZE = (800UL * 480UL + 7) / 8;   // 1-bit packed
 
   GxEPD2_BW<GxEPD2_750_GDEY075T7, GxEPD2_750_GDEY075T7::HEIGHT>

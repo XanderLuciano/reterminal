@@ -203,11 +203,58 @@ def _do_build(build_id: str, config: dict):
         firmware = build_dir / "firmware.bin"
 
         if not factory_bin.exists():
-            _push_line(build_id, "ERROR: Missing build artifact firmware.factory.bin")
-            with _builds_lock:
-                if build_id in _builds:
-                    _builds[build_id]["status"] = "error"
-            return
+            # PlatformIO didn't generate the merged image (older esptool, or
+            # custom build config). Merge it ourselves from the components.
+            _push_line(build_id, "factory.bin not found — merging from parts...")
+            bootloader = build_dir / "bootloader.bin"
+            partitions = build_dir / "partitions.bin"
+            boot_app0 = build_dir / "boot_app0.bin"
+            if not firmware.exists() or not bootloader.exists() or not partitions.exists():
+                missing = []
+                if not firmware.exists(): missing.append("firmware.bin")
+                if not bootloader.exists(): missing.append("bootloader.bin")
+                if not partitions.exists(): missing.append("partitions.bin")
+                _push_line(build_id, f"ERROR: Missing build artifacts: {', '.join(missing)}")
+                with _builds_lock:
+                    if build_id in _builds:
+                        _builds[build_id]["status"] = "error"
+                return
+            # Find esptool from PlatformIO's penv (has rich_click dep).
+            penv_python = Path.home() / ".platformio" / "penv" / "bin" / "python"
+            esptool_py = Path.home() / ".platformio" / "packages" / "tool-esptoolpy" / "esptool.py"
+            if not penv_python.exists() or not esptool_py.exists():
+                _push_line(build_id, "ERROR: Cannot find esptool — PlatformIO install may be incomplete")
+                with _builds_lock:
+                    if build_id in _builds:
+                        _builds[build_id]["status"] = "error"
+                return
+            _push_line(build_id, "Merging flash image...")
+            cmds = [str(penv_python), str(esptool_py),
+                "--chip", "esp32s3", "merge-bin",
+                "-o", str(factory_bin.absolute()),
+                "--flash-mode", "dio", "--flash-size", "8MB",
+                "0x0000", str(bootloader.absolute()),
+                "0x8000", str(partitions.absolute()),
+            ]
+            # boot_app0.bin is at 0xe000, may be in build dir or framework dir
+            boot_app0 = build_dir / "boot_app0.bin"
+            if not boot_app0.exists():
+                for fw_dir in Path.home().glob(".platformio/packages/framework-*/tools/partitions/boot_app0.bin"):
+                    boot_app0 = fw_dir
+                    break
+            if boot_app0.exists():
+                cmds += ["0xe000", str(boot_app0.absolute())]
+            cmds += ["0x10000", str(firmware.absolute())]
+            result = subprocess.run(cmds, capture_output=True, text=True, timeout=30)
+
+            if result.returncode != 0:
+                err = result.stderr[-300:] if result.stderr else "Unknown error"
+                _push_line(build_id, f"ERROR: esptool merge failed:\n{err}")
+                with _builds_lock:
+                    if build_id in _builds:
+                        _builds[build_id]["status"] = "error"
+                return
+            _push_line(build_id, f"Merged image created: {factory_bin.stat().st_size / 1024:.0f} KB")
 
         # 5. Copy artifacts to output dir
         output_dir = HERE / "builds" / build_id
