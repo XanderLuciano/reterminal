@@ -348,11 +348,17 @@
   let lastShownLines = 0;
   let flashPort = null;
 
+  // Close port without nulling — allows Transport to reopen same port object
   async function disconnectFlashPort() {
     if (flashPort) {
       try { await flashPort.close(); } catch (e) { /* best-effort */ }
-      flashPort = null;
     }
+  }
+
+  // Full reset: close + clear. Used on success/final-failure so next
+  // 'Try Again' shows the device picker fresh.
+  function resetFlashPort() {
+    flashPort = null;
   }
 
   function renderBuildLog(lines) {
@@ -636,8 +642,9 @@
           log('Done! Resetting device...');
           await loader.hardReset();
 
-          // Success — clean up
+          // Success — clean up fully
           await disconnectFlashPort();
+          resetFlashPort();
 
           document.getElementById('progress-fill').style.width = '100%';
           document.getElementById('progress-fill').style.background = 'var(--green)';
@@ -673,6 +680,7 @@
 
     } catch (e) {
       await disconnectFlashPort();
+      resetFlashPort();  // clear so next try shows device picker
       document.getElementById('progress-fill').classList.remove('indeterminate');
 
       if (e.message?.includes('No port selected') || e.name === 'AbortError') {
