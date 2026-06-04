@@ -350,10 +350,19 @@
 
   function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
-  // Aggressively release the port — close + forget browser permission.
-  // On some OS/driver combos (macOS CH34x) the port may not release
-  // immediately, so callers should add a short sleep after this.
+  // Close the port. Does NOT forget() — that revokes browser permission
+  // and forces a new picker dialog. Use closeTransport() instead when
+  // esptool-js has an active transport (it handles its own reader/port cleanup).
   async function disconnectFlashPort() {
+    if (flashPort) {
+      try { await flashPort.close(); } catch (e) { /* best-effort */ }
+      flashPort = null;
+    }
+  }
+
+  // Full release including browser permission revocation.
+  // Use only when we want the next attempt to show a fresh device picker.
+  async function forgetFlashPort() {
     if (flashPort) {
       try { await flashPort.close(); } catch (e) { /* best-effort */ }
       try { await flashPort.forget(); } catch (e) { /* best-effort */ }
@@ -560,56 +569,58 @@
     document.getElementById('progress-fill').classList.add('indeterminate');
     document.getElementById('progress-text').textContent = 'Waiting for device...';
 
-    // Always fully release previous failed session first
-    await disconnectFlashPort();
-    await sleep(500);  // let OS release the port
+    // Full release of previous session — forget() revokes stale permission
+    // so the next requestPort() gives us a genuinely fresh port
+    await forgetFlashPort();
+    await sleep(1500);  // macOS CH34x needs time to release
 
     try {
       if (!navigator.serial) {
         throw new Error('Web Serial API not available. Use Chrome or Edge.');
       }
 
-      // Only request a new port if we don't already have one
-      if (!flashPort) {
-        log('Requesting serial port — select your ESP32 device...');
-        flashPort = await navigator.serial.requestPort();
-      } else {
-        log('Reusing previous serial port...');
-      }
+      log('Requesting serial port — select your ESP32 device...');
+      flashPort = await navigator.serial.requestPort();
 
       const info = flashPort.getInfo();
       const deviceLabel = info.usbProductName || 'ESP32-S3';
       log('Connected to ' + deviceLabel);
       setStatus('Connected to ' + deviceLabel + '. Flashing...', 'status-building');
 
-      // Download firmware once (don't re-download on retry)
+      // Download firmware once
       log('Downloading firmware...');
       const resp = await fetch(mergedUrl);
       const buf = await resp.arrayBuffer();
       const binary = new Uint8Array(buf);
       log(`Firmware: ${(binary.length / 1024).toFixed(1)} KB`);
 
-      // Try 921600 first, fall back to 115200 on serial corruption
       const baudRates = [921600, 115200];
       let lastError = null;
 
       for (let i = 0; i < baudRates.length; i++) {
         const baud = baudRates[i];
+
+        // Track these so we can clean up the transport on error.
+        // Transport.disconnect() stops its readLoop + releases the
+        // port reader, which is required before port.close() can succeed.
+        let transport = null;
+        let loader = null;
+
         if (i > 0) {
           log(`⚠ Serial error — retrying at ${baud / 1000} kbps...`);
           setStatus('Retrying at lower speed (' + (baud / 1000) + ' kbps)...', 'status-building');
           document.getElementById('progress-fill').classList.add('indeterminate');
-          // Full release — close + forget + wait for OS to let go
-          await disconnectFlashPort();
-          await sleep(1000);
-          // Re-request a fresh port (needed because forget() invalidated old one)
+          // Full release with forget() — the ESP32 stub is in a bad state
+          // after corruption; we need a clean reset via re-plug or fresh picker
+          await forgetFlashPort();
+          await sleep(2000);  // macOS CH34x needs generous time
           log('Re-requesting serial port...');
           flashPort = await navigator.serial.requestPort();
         }
 
         try {
-          const transport = new window.Transport(flashPort);
-          const loader = new window.ESPLoader({
+          transport = new window.Transport(flashPort);
+          loader = new window.ESPLoader({
             transport: transport,
             baudrate: baud,
             terminal: {
@@ -648,8 +659,9 @@
           log('Done! Resetting device...');
           await loader.hardReset();
 
-          // Success — clean up
-          await disconnectFlashPort();
+          // Clean shutdown: disconnect transport first, then close port
+          try { await transport.disconnect(); } catch (e) { /* best-effort */ }
+          flashPort = null;
 
           document.getElementById('progress-fill').style.width = '100%';
           document.getElementById('progress-fill').style.background = 'var(--green)';
@@ -658,19 +670,23 @@
           log('SUCCESS: Flash complete!' + (i > 0 ? ' (used ' + (baud / 1000) + ' kbps)' : ''));
           btn.textContent = '✅ Flashed!';
           btn.style.background = 'var(--green)';
-          return; // Success — exit function
+          return;
 
         } catch (innerErr) {
+          // CRITICAL: clean up transport BEFORE closing the port.
+          // Transport.disconnect() stops the readLoop reader, which
+          // must be released before port.close() can succeed.
+          if (transport) {
+            try { await transport.disconnect(); } catch (e) { /* best-effort */ }
+          }
+          // After disconnect(), the port is closed by esptool-js.
+          // Null both so we don't double-clean.
+          transport = null;
+          loader = null;
+          flashPort = null;
+
           lastError = innerErr;
           const msg = innerErr.message || '';
-
-          // Handle "port already open" — release and let outer loop re-request
-          if (msg.includes('already open') && i < baudRates.length - 1) {
-            log('Port stuck open — releasing and retrying...');
-            await disconnectFlashPort();
-            await sleep(1000);
-            continue; // Fall through to next baud rate with fresh port
-          }
 
           // Detect serial corruption / noise errors
           const isSerialCorruption =
@@ -684,14 +700,14 @@
             continue; // Fall through to next baud rate
           }
 
-          throw innerErr; // Not recoverable, or last attempt — re-throw
+          throw innerErr;
         }
       }
 
-      // Shouldn't reach here, but if all rates failed:
       throw lastError || new Error('Flash failed at all baud rates');
 
     } catch (e) {
+      // Ensure port is released on final failure
       await disconnectFlashPort();
       document.getElementById('progress-fill').classList.remove('indeterminate');
 
