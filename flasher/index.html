@@ -346,6 +346,14 @@
   let mergedUrl = null;
   let logLines = [];
   let lastShownLines = 0;
+  let flashPort = null;
+
+  async function disconnectFlashPort() {
+    if (flashPort) {
+      try { await flashPort.close(); } catch (e) { /* best-effort */ }
+      flashPort = null;
+    }
+  }
 
   function renderBuildLog(lines) {
     if (!lines || lines.length === 0) return;
@@ -546,72 +554,125 @@
     document.getElementById('progress-fill').classList.add('indeterminate');
     document.getElementById('progress-text').textContent = 'Waiting for device...';
 
-    try {
-      log('Requesting serial port — select your ESP32 device...');
+    // Always disconnect previous failed session first
+    await disconnectFlashPort();
 
+    try {
       if (!navigator.serial) {
         throw new Error('Web Serial API not available. Use Chrome or Edge.');
       }
 
-      const port = await navigator.serial.requestPort();
-      // Don't open the port — esptool-js Transport handles that.
-      // Opening first causes "port is already open" error.
+      // Only request a new port if we don't already have one
+      if (!flashPort) {
+        log('Requesting serial port — select your ESP32 device...');
+        flashPort = await navigator.serial.requestPort();
+      } else {
+        log('Reusing previous serial port...');
+      }
 
-      const info = port.getInfo();
+      const info = flashPort.getInfo();
       const deviceLabel = info.usbProductName || 'ESP32-S3';
       log('Connected to ' + deviceLabel);
       setStatus('Connected to ' + deviceLabel + '. Flashing...', 'status-building');
 
-      const transport = new window.Transport(port);
-      const loader = new window.ESPLoader({
-        transport: transport,
-        baudrate: 921600,
-        terminal: {
-          clean: () => {},
-          writeLine: (msg) => log('ESP: ' + msg),
-          write: () => {},
-        },
-      });
-
-      log('Entering bootloader...');
-      await loader.main();
-      log('Chip: ' + loader.chipName);
-
+      // Download firmware once (don't re-download on retry)
       log('Downloading firmware...');
       const resp = await fetch(mergedUrl);
       const buf = await resp.arrayBuffer();
       const binary = new Uint8Array(buf);
       log(`Firmware: ${(binary.length / 1024).toFixed(1)} KB`);
 
-      const flashOptions = {
-        fileArray: [{ data: binary, address: 0x0 }],
-        flashSize: 'keep',
-        flashMode: 'keep',
-        flashFreq: 'keep',
-        eraseAll: false,
-        compress: true,
-        reportProgress: (fileIndex, written, total) => {
-          const pct = ((written / total) * 100).toFixed(0);
-          document.getElementById('progress-text').textContent = `Flashing: ${pct}%`;
-          document.getElementById('progress-fill').classList.remove('indeterminate');
-          document.getElementById('progress-fill').style.width = pct + '%';
-          document.getElementById('progress-fill').style.background = 'var(--accent)';
-        },
-      };
-      await loader.writeFlash(flashOptions);
+      // Try 921600 first, fall back to 115200 on serial corruption
+      const baudRates = [921600, 115200];
+      let lastError = null;
 
-      log('Done! Resetting device...');
-      await loader.hardReset();
+      for (let i = 0; i < baudRates.length; i++) {
+        const baud = baudRates[i];
+        if (i > 0) {
+          log(`⚠ Serial error — retrying at ${baud / 1000} kbps...`);
+          setStatus('Retrying at lower speed (' + (baud / 1000) + ' kbps)...', 'status-building');
+          document.getElementById('progress-fill').classList.add('indeterminate');
+          await disconnectFlashPort();
+        }
 
-      document.getElementById('progress-fill').style.width = '100%';
-      document.getElementById('progress-fill').style.background = 'var(--green)';
-      document.getElementById('progress-text').textContent = 'Flash complete!';
-      setStatus('✅ Flash complete! Device is rebooting.', 'status-ok');
-      log('SUCCESS: Flash complete!');
-      btn.textContent = '✅ Flashed!';
-      btn.style.background = 'var(--green)';
+        try {
+          const transport = new window.Transport(flashPort);
+          const loader = new window.ESPLoader({
+            transport: transport,
+            baudrate: baud,
+            terminal: {
+              clean: () => {},
+              writeLine: (msg) => log('ESP: ' + msg),
+              write: () => {},
+            },
+          });
+
+          log(i === 0 ? 'Entering bootloader...' : 'Re-entering bootloader...');
+          await loader.main();
+
+          if (i === 0) {
+            log('Chip: ' + loader.chipName + ' — flashing at ' + (baud / 1000) + ' kbps');
+          } else {
+            log('Chip: ' + loader.chipName + ' — using ' + (baud / 1000) + ' kbps (reliable mode)');
+          }
+
+          const flashOptions = {
+            fileArray: [{ data: binary, address: 0x0 }],
+            flashSize: 'keep',
+            flashMode: 'keep',
+            flashFreq: 'keep',
+            eraseAll: false,
+            compress: true,
+            reportProgress: (fileIndex, written, total) => {
+              const pct = ((written / total) * 100).toFixed(0);
+              document.getElementById('progress-text').textContent = `Flashing: ${pct}%`;
+              document.getElementById('progress-fill').classList.remove('indeterminate');
+              document.getElementById('progress-fill').style.width = pct + '%';
+              document.getElementById('progress-fill').style.background = 'var(--accent)';
+            },
+          };
+          await loader.writeFlash(flashOptions);
+
+          log('Done! Resetting device...');
+          await loader.hardReset();
+
+          // Success — clean up
+          await disconnectFlashPort();
+
+          document.getElementById('progress-fill').style.width = '100%';
+          document.getElementById('progress-fill').style.background = 'var(--green)';
+          document.getElementById('progress-text').textContent = 'Flash complete!';
+          setStatus('✅ Flash complete! Device is rebooting.', 'status-ok');
+          log('SUCCESS: Flash complete!' + (i > 0 ? ' (used ' + (baud / 1000) + ' kbps)' : ''));
+          btn.textContent = '✅ Flashed!';
+          btn.style.background = 'var(--green)';
+          return; // Success — exit function
+
+        } catch (innerErr) {
+          lastError = innerErr;
+          const msg = innerErr.message || '';
+
+          // Detect serial corruption / noise errors
+          const isSerialCorruption =
+            msg.includes('stream stopped') ||
+            msg.includes('noise') ||
+            msg.includes('corruption') ||
+            msg.includes('Invalid head of packet') ||
+            msg.includes('Bad size');
+
+          if (isSerialCorruption && i < baudRates.length - 1) {
+            continue; // Fall through to next baud rate
+          }
+
+          throw innerErr; // Not a serial error, or last attempt — re-throw
+        }
+      }
+
+      // Shouldn't reach here, but if all rates failed:
+      throw lastError || new Error('Flash failed at all baud rates');
 
     } catch (e) {
+      await disconnectFlashPort();
       document.getElementById('progress-fill').classList.remove('indeterminate');
 
       if (e.message?.includes('No port selected') || e.name === 'AbortError') {
@@ -624,7 +685,6 @@
         log('FLASH ERROR: ' + e.message);
         setStatus('❌ Flash failed: ' + e.message, 'status-error');
 
-        // Common ESP32 flash errors — give helpful hints
         if (e.message?.includes('timeout') || e.message?.includes('Failed to connect')) {
           log('HINT: Auto-reset may have failed. Try manual download mode:');
           log('  Hold BOOT → press RESET → release BOOT.');
