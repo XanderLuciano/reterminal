@@ -252,10 +252,12 @@ void showPage(int page) {
   display.init(0);  // re-init after deep sleep (controller loses power)
   display.setFullWindow();
 #ifdef E1002_VARIANT
-  // Write nibble-packed framebuf to controller memory, then refresh.
-  // This avoids loadImageBuffer which isn't available in all GxEPD2 versions.
-  display.writeImage(framebuf, 0, 0, 800, 480);
-  display.refresh();
+  // Use writeNative for nibble-packed 4-bit Spectra 6 data.
+  // writeImage() treats data as 1-bit monochrome and scrambles colors.
+  // _convert_to_native() handles GxEPD2 logical → panel native remapping.
+  display.epd2.writeNative(framebuf, nullptr, 0, 0, 800, 480);
+  display.epd2.refresh(false);
+  display.epd2.powerOff();
 #elif defined(E1001_VARIANT)
   // Write bit-packed framebuf directly to controller — bypasses Adafruit_GFX paging
   display.epd2.writeImage(framebuf, 0, 0, 800, 480);
@@ -274,8 +276,10 @@ void showEmbeddedBitmap(const uint8_t* bitmap, size_t len) {
   display.setFullWindow();
 #ifdef E1002_VARIANT
   (void)len;  // size is fixed for E1002 (192000 bytes)
-  display.writeImage(bitmap, 0, 0, 800, 480);  // no pgm — ESP32 flash is memory-mapped
-  display.refresh();
+  // writeNative for nibble-packed 4-bit data — same format as server framebuf
+  display.epd2.writeNative(bitmap, nullptr, 0, 0, 800, 480);  // no pgm — ESP32 flash is memory-mapped
+  display.epd2.refresh(false);
+  display.epd2.powerOff();
 #elif defined(E1001_VARIANT)
   // Bypass Adafruit_GFX drawBitmap — write directly to controller for cleaner output
   (void)len;

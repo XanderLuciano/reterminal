@@ -144,7 +144,10 @@ def pack_bits(img: Image.Image) -> bytes:
     """
     Convert a 1-bit BW image to GxEPD2 bit-packed format.
     8 pixels per byte, MSB first (leftmost pixel = bit 7).
-    
+
+    GxEPD2_BW convention (matches UC8179 default):
+      bit=1 → white, bit=0 → black
+      fillScreen(GxEPD_WHITE) → 0xFF, fillScreen(GxEPD_BLACK) → 0x00
     Returns raw bytes ready for GxEPD2_BW display buffer.
     """
     if img.mode != "1":
@@ -154,7 +157,8 @@ def pack_bits(img: Image.Image) -> bytes:
 
     for i, pixel in enumerate(img.getdata()):
         # pixel is 0 (black) or 255 (white) in mode "1"
-        if pixel == 0:
+        # GxEPD2: bit=1=white, bit=0=black → set bits for white pixels
+        if pixel != 0:  # white
             buf[i // 8] |= 0x80 >> (i % 8)
 
     return bytes(buf)
