@@ -282,6 +282,24 @@
     </div>
   </div>
 
+  <!-- Quick Flash -->
+  <div class="card" id="quick-flash-card">
+    <h2>⚡ Quick Flash</h2>
+    <p style="font-size:.82rem;color:var(--muted);margin-bottom:.75rem;">
+      Flash a pre-built image — no build wait. Creds are <code>test/test</code>
+      so it'll show the error screen (good for hardware verification).
+    </p>
+    <div style="display:flex;gap:.5rem;align-items:center;">
+      <button class="btn btn-flash" id="quick-flash-btn" onclick="quickFlash()" style="flex:1">
+        ⚡ Flash Pre-Built E1002
+      </button>
+      <span id="quick-flash-size" style="font-size:.78rem;color:var(--muted);white-space:nowrap"></span>
+    </div>
+    <p id="quick-flash-hint" style="font-size:.75rem;color:var(--muted);margin-top:.5rem"></p>
+    <div class="status" id="quick-flash-status"></div>
+    <div class="log" id="quick-flash-log" style="display:none"></div>
+  </div>
+
   <!-- Build -->
   <div class="card" id="build-card">
     <h2>🔨 Build Firmware</h2>
@@ -489,8 +507,183 @@
       const isE1001 = r.value === 'e1001';
       document.getElementById('ble-name').placeholder = isE1001 ? 'E1001-Dashboard' : 'E1002-Dashboard';
       updateUrlPreview();
+      updateQuickFlashButton();
     });
   });
+
+  // ── Quick Flash (pre-built firmware) ──
+  let prebuiltInfo = null;
+
+  async function loadPrebuiltInfo() {
+    try {
+      const resp = await fetch('/api/prebuilt');
+      prebuiltInfo = await resp.json();
+      updateQuickFlashButton();
+    } catch (e) {
+      document.getElementById('quick-flash-hint').textContent = 'Pre-built images not available (server offline?)';
+    }
+  }
+  loadPrebuiltInfo();
+
+  function updateQuickFlashButton() {
+    const device = document.querySelector('input[name="device"]:checked').value;
+    const btn = document.getElementById('quick-flash-btn');
+    const sizeEl = document.getElementById('quick-flash-size');
+    const hintEl = document.getElementById('quick-flash-hint');
+    const label = device === 'e1002' ? 'E1002' : 'E1001';
+
+    if (!prebuiltInfo || !prebuiltInfo[device] || !prebuiltInfo[device].available) {
+      btn.textContent = '⚡ Flash Pre-Built ' + label;
+      btn.disabled = true;
+      btn.style.opacity = '0.4';
+      sizeEl.textContent = '';
+      hintEl.textContent = 'Run scripts/generate_embedded_screens.py first';
+      return;
+    }
+
+    const info = prebuiltInfo[device];
+    const sizeKB = (info.size / 1024).toFixed(0);
+    btn.textContent = '⚡ Flash Pre-Built ' + label;
+    btn.disabled = false;
+    btn.style.opacity = '1';
+    sizeEl.textContent = sizeKB + ' KB';
+    hintEl.textContent = info.note;
+  }
+
+  // Quick flash uses the same flash logic as local file upload,
+  // just fetching the binary from /prebuilt/<variant> first.
+  async function quickFlash() {
+    const btn = document.getElementById('quick-flash-btn');
+    const statusEl = document.getElementById('quick-flash-status');
+    const logEl = document.getElementById('quick-flash-log');
+    const device = document.querySelector('input[name="device"]:checked').value;
+    const label = device === 'e1002' ? 'E1002' : 'E1001';
+
+    btn.disabled = true;
+    btn.textContent = '⬇️ Downloading...';
+    logEl.style.display = 'block';
+    logEl.textContent = '';
+    statusEl.textContent = '';
+    statusEl.className = 'status';
+
+    const qLog = (msg) => {
+      logEl.textContent += '[' + new Date().toLocaleTimeString() + '] ' + msg + '\n';
+      logEl.scrollTop = logEl.scrollHeight;
+    };
+
+    try {
+      qLog('Fetching pre-built image for ' + label + '...');
+      const resp = await fetch('/prebuilt/' + device);
+      if (!resp.ok) throw new Error('Server returned ' + resp.status);
+
+      const blob = await resp.blob();
+      qLog('Downloaded ' + (blob.size / 1024).toFixed(0) + ' KB');
+
+      btn.textContent = '🔌 Connect USB...';
+      statusEl.textContent = 'Select the serial port to begin flashing...';
+      statusEl.className = 'status';
+
+      // Reuse the existing flashBinary function from the local file path
+      await flashFromBlob(blob, device.toUpperCase(), qLog, statusEl);
+
+    } catch (e) {
+      qLog('ERROR: ' + e.message);
+      statusEl.textContent = '❌ ' + e.message;
+      statusEl.className = 'status status-error';
+      btn.disabled = false;
+      btn.textContent = '⚡ Flash Pre-Built ' + label;
+    }
+  }
+
+  async function flashFromBlob(blob, label, log, statusEl) {
+    if (!('serial' in navigator)) {
+      throw new Error('Web Serial API not available. Use Chrome or Edge.');
+    }
+
+    log('Requesting serial port...');
+    let flashPort;
+    try {
+      flashPort = await navigator.serial.requestPort();
+    } catch (e) {
+      if (e.name === 'NotFoundError') {
+        log('Cancelled — no port selected');
+        statusEl.textContent = 'Cancelled';
+        statusEl.className = 'status status-ok';
+        document.getElementById('quick-flash-btn').disabled = false;
+        document.getElementById('quick-flash-btn').textContent = '⚡ Flash Pre-Built ' + label;
+        return;
+      }
+      throw e;
+    }
+
+    await flashPort.open({ baudRate: 115200 });
+    log('Port opened');
+
+    const transport = new window.Transport(flashPort);
+    const loader = new window.ESPLoader({
+      transport: transport,
+      baudrate: 921600,
+      debugLogging: false,
+    });
+
+    // Baud rate fallback chain
+    const baudRates = [921600, 460800, 230400, 115200];
+    let lastError = null;
+
+    for (let i = 0; i < baudRates.length; i++) {
+      const baud = baudRates[i];
+      try {
+        log(i === 0 ? 'Entering bootloader...' : 'Re-entering bootloader at ' + (baud / 1000) + ' kbps...');
+        await loader.main();
+        log('Chip: ' + loader.chipName + ' — flashing at ' + (baud / 1000) + ' kbps');
+
+        const data = new Uint8Array(await blob.arrayBuffer());
+        const flashOptions = {
+          fileArray: [{ data: data, address: 0x0000 }],
+          flashSize: 'keep',
+          flashMode: 'keep',
+          flashFreq: 'keep',
+          eraseAll: false,
+          compress: true,
+          reportProgress: (fileIdx, written, total) => {
+            const pct = Math.round((written / total) * 100);
+            document.getElementById('quick-flash-status').textContent = `Flashing: ${pct}%`;
+          },
+        };
+
+        await loader.writeFlash(flashOptions);
+        log('Done! Resetting...');
+        await loader.after();
+
+        await transport.disconnect();
+        flashPort = null;
+
+        statusEl.textContent = '✅ Flash complete! ' + label + ' is rebooting.';
+        statusEl.className = 'status status-ok';
+        log('SUCCESS');
+
+        document.getElementById('quick-flash-btn').disabled = false;
+        document.getElementById('quick-flash-btn').textContent = '✅ Done!';
+        setTimeout(() => updateQuickFlashButton(), 3000);
+        return;
+
+      } catch (innerErr) {
+        try { await transport.disconnect(); } catch (e) { /* ignore */ }
+        transport = null; loader = null; flashPort = null;
+        lastError = innerErr;
+
+        if (innerErr.message?.includes('stream stopped') ||
+            innerErr.message?.includes('noise') ||
+            innerErr.message?.includes('corruption') ||
+            innerErr.message?.includes('Invalid head of packet') ||
+            innerErr.message?.includes('Bad size')) {
+          if (i < baudRates.length - 1) continue;
+        }
+        throw innerErr;
+      }
+    }
+    throw lastError || new Error('Flash failed at all baud rates');
+  }
 
   // ── Advanced toggle ──
   function toggleAdvanced() {

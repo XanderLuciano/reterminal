@@ -426,6 +426,47 @@ def list_url_pages():
 # ── Web Flasher UI ──
 
 FLASHER_DIR = HERE.parent / "flasher"
+PREBUILT_DIR = FLASHER_DIR / "prebuilt"
+
+PREBUILT_META = {
+    "e1002": {
+        "label": "E1002 (Spectra 6 · Color)",
+        "file": "e1002-factory.bin",
+        "size": None,  # filled at request time
+        "note": "WiFi: test/test — will show error screen"
+    },
+    "e1001": {
+        "label": "E1001 (Monochrome · BW)",
+        "file": "e1001-factory.bin",
+        "size": None,
+        "note": "WiFi: test/test — will show error screen"
+    },
+}
+
+
+@app.route("/api/prebuilt")
+def api_prebuilt_list():
+    """List available pre-built firmware images."""
+    result = {}
+    for variant, meta in PREBUILT_META.items():
+        path = PREBUILT_DIR / meta["file"]
+        info = dict(meta)
+        info["size"] = path.stat().st_size if path.exists() else 0
+        info["available"] = path.exists()
+        result[variant] = info
+    return result
+
+
+@app.route("/prebuilt/<variant>")
+def prebuilt_download(variant):
+    """Download a pre-built firmware binary."""
+    if variant not in PREBUILT_META:
+        return {"error": f"Unknown variant: {variant}"}, 404
+    path = PREBUILT_DIR / PREBUILT_META[variant]["file"]
+    if not path.exists():
+        return {"error": "Pre-built image not found"}, 404
+    return send_from_directory(str(PREBUILT_DIR), PREBUILT_META[variant]["file"],
+                               mimetype="application/octet-stream")
 
 
 @app.route("/flasher")
