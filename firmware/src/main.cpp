@@ -80,6 +80,7 @@ uint8_t* framebuf = nullptr;
 RTC_DATA_ATTR uint32_t rtc_sleep_cycles = 0;
 RTC_DATA_ATTR bool rtc_first_boot = true;
 RTC_DATA_ATTR int rtc_active_page = 0;
+RTC_DATA_ATTR char rtc_etags[3][64] = {{""}, {""}, {""}};
 volatile bool bleTriggered = false;
 
 class TriggerCallbacks : public NimBLECharacteristicCallbacks {
@@ -160,13 +161,13 @@ void indicateCharge(ChargeState state) {
 
 void beepBoot() {
   if (!ENABLE_BEEPS) return;
-  tone(BUZZER_PIN, 2600, 80);
+  tone(BUZZER_PIN, 2600, 80); delay(120);
 }
 
 void beepError() {
   if (!ENABLE_BEEPS) return;
-  tone(BUZZER_PIN, 1800, 100); delay(150);
-  tone(BUZZER_PIN, 1800, 100);
+  tone(BUZZER_PIN, 1800, 100); delay(160);
+  tone(BUZZER_PIN, 1800, 100); delay(140);
 }
 
 void beepPage(int page) {
@@ -195,17 +196,41 @@ bool connectWiFi() {
   return WiFi.status() == WL_CONNECTED;
 }
 
-bool fetchPage(int page, int batteryPct) {
+// Returns: 1 = fetched & rendered, 0 = unchanged (304), -1 = error
+int fetchPage(int page, int batteryPct) {
   framebuf = nullptr;
   framebuf = (uint8_t*)ps_malloc(FB_SIZE);
-  if (!framebuf) return false;
+  if (!framebuf) return -1;
 
   char url[256];
   snprintf(url, sizeof(url), "%s?template=%s&battery=%d",
            DASHBOARD_BASE_URL, TEMPLATE_NAMES[page], batteryPct);
 
   HTTPClient http; http.begin(url); http.setTimeout(30000);
-  if (http.GET() != 200) { http.end(); return false; }
+
+  // Conditional fetch — skip re-render if content hasn't changed
+  if (strlen(rtc_etags[page]) > 0) {
+    http.addHeader("If-None-Match", rtc_etags[page]);
+  }
+
+  int code = http.GET();
+
+  if (code == 304) {
+    http.end();
+    framebuf = nullptr;
+    return 0;  // unchanged
+  }
+
+  if (code != 200) { http.end(); return -1; }
+
+  // Store new ETag for next conditional fetch
+  if (http.hasHeader("ETag")) {
+    String etag = http.header("ETag");
+    strncpy(rtc_etags[page], etag.c_str(), 63);
+    rtc_etags[page][63] = 0;
+  } else {
+    rtc_etags[page][0] = 0;  // no ETag → always fetch
+  }
 
   WiFiClient* stream = http.getStreamPtr();
   size_t total = 0; unsigned long start = millis();
@@ -218,7 +243,8 @@ bool fetchPage(int page, int batteryPct) {
     delay(1);
   }
   http.end();
-  return total == FB_SIZE;
+  if (total != FB_SIZE) return -1;
+  return 1;
 }
 
 void showPage(int page) {
@@ -359,12 +385,18 @@ void refreshAndShow(int page) {
     return;
   }
   int battery = readBatteryPercent();
-  if (!fetchPage(page, battery)) {
-    WiFi.disconnect(true);
+  int result = fetchPage(page, battery);
+  WiFi.disconnect(true);
+
+  if (result < 0) {
     showError(false);
     return;
   }
-  WiFi.disconnect(true);
+  if (result == 0) {
+    // Content unchanged — skip display refresh, save battery
+    framebuf = nullptr;
+    return;
+  }
   showPage(page);
   rtc_sleep_cycles = 0;
 }
