@@ -91,7 +91,7 @@ async function deletePage(name: string) {
 async function rerenderPage(name: string) {
   saving.value = true
   try {
-    await fetch(`/api/page/${name}/refresh`, { method: 'POST' })
+    await fetch(`${API_BASE}/page/${name}/refresh`, { method: 'POST' })
     await loadPageMeta(name)
   } catch {
     // error handled implicitly
@@ -141,8 +141,8 @@ async function savePage() {
 
     const method = editingPage.value ? 'PUT' : 'POST'
     const endpoint = editingPage.value
-      ? `/api/page/${editingPage.value.name}`
-      : `/api/page/${formName.value}`
+      ? `${API_BASE}/page/${editingPage.value.name}`
+      : `${API_BASE}/page/${formName.value}`
 
     const res = await fetch(endpoint, {
       method,

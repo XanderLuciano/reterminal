@@ -42,11 +42,17 @@ useSeoMeta({
         />
 
         <template #footer>
-          <UColorModeButton size="xs" />
+          <div class="flex items-center justify-between px-1">
+            <span class="text-xs text-muted">v1.0-beta</span>
+            <UColorModeButton size="xs" />
+          </div>
         </template>
       </UDashboardSidebar>
 
       <UDashboardPanel>
+        <template #header>
+          <UDashboardSidebarToggle />
+        </template>
         <template #body>
           <NuxtPage />
         </template>

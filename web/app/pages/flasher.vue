@@ -1,8 +1,7 @@
 <script setup lang="ts">
-import type { FormSubmitEvent } from '@nuxt/ui'
-
 const config = useRuntimeConfig()
 const API_BASE = config.public.apiBase
+const BUILD_POLL_MAX_S = 600  // 10 minute max poll
 
 // ── Device & form state ──
 const device = ref<'e1001' | 'e1002'>('e1002')
@@ -31,6 +30,7 @@ const buildLog = ref('')
 const buildId = ref('')
 const firmwareUrl = ref('')
 let pollTimer: ReturnType<typeof setInterval> | null = null
+let buildStartMs = 0
 
 // ── Quick flash ──
 const qfStatus = ref('')
@@ -85,6 +85,7 @@ async function startBuild() {
     buildId.value = data.build_id
 
     // Poll for status
+    buildStartMs = Date.now()
     pollTimer = setInterval(pollBuild, 1000)
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e)
@@ -95,6 +96,14 @@ async function startBuild() {
 }
 
 async function pollBuild() {
+  // Timeout after BUILD_POLL_MAX_S
+  if (Date.now() - buildStartMs > BUILD_POLL_MAX_S * 1000) {
+    if (pollTimer) { clearInterval(pollTimer); pollTimer = null }
+    buildStatus.value = 'error'
+    buildMessage.value = 'Build timed out after 10 minutes'
+    building.value = false
+    return
+  }
   try {
     const res = await fetch(`${API_BASE}/build/${buildId.value}`)
     const data = await res.json()
@@ -120,54 +129,32 @@ async function pollBuild() {
 
 // ── Quick flash ──
 async function quickFlash(variant: string) {
-  qfStatus.value = 'building'
-  qfLog.value = 'Fetching pre-built firmware...'
+  qfStatus.value = 'fetching'
+  qfLog.value = 'Downloading pre-built firmware...'
 
   try {
     const res = await fetch(`${API_BASE}/prebuilt/${variant}`)
     if (!res.ok) throw new Error(`HTTP ${res.status}`)
     const blob = await res.blob()
-    qfLog.value += `\nGot ${(blob.size / 1024).toFixed(0)} KB firmware`
+    const sizeKB = (blob.size / 1024).toFixed(0)
+    qfLog.value += `\nGot ${sizeKB} KB firmware`
 
-    await flashViaWebSerial(blob)
+    // Trigger browser download
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `eink-${variant}-factory.bin`
+    a.click()
+    URL.revokeObjectURL(url)
+
+    qfStatus.value = 'done'
+    qfLog.value += `\nSaved eink-${variant}-factory.bin (${sizeKB} KB)`
+    qfLog.value += '\nFlash: esptool.py --port PORT write_flash 0x0 firmware.bin'
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e)
     qfStatus.value = 'error'
     qfLog.value += `\nERROR: ${msg}`
   }
-}
-
-async function flashViaWebSerial(blob: Blob) {
-  qfLog.value += '\nRequesting serial port...'
-  const encoder = new TextEncoder()
-
-  // Use Web Serial to flash pre-built binary
-  const port = await (navigator as any).serial.requestPort()
-  await port.open({ baudRate: 115200 })
-
-  qfLog.value += '\nConnected. Put device in download mode...'
-  qfLog.value += '\n(Hold BOOT, press RESET, release BOOT)'
-
-  // esptool-js approach — for simplicity, trigger manual flash
-  const writer = port.writable.getWriter()
-  const buf = await blob.arrayBuffer()
-  const data = new Uint8Array(buf)
-
-  // Sync frame
-  const syncFrame = new Uint8Array(36)
-  syncFrame[0] = 0xC0
-  for (let i = 0; i < 32; i++) {
-    syncFrame[i + 1] = 0x55
-  }
-  syncFrame[33] = 0xC0
-
-  await writer.write(syncFrame)
-  await writer.close()
-  port.close()
-
-  qfLog.value += `\nSync sent. ${data.length} bytes ready for esptool.`
-  qfStatus.value = 'done'
-  qfLog.value += '\nUse: esptool.py --port PORT write_flash 0x0 firmware.bin'
 }
 
 // ── Firmware download ──
@@ -182,6 +169,7 @@ async function triggerBLE() {
   const config = BLE_UUIDS[device.value]
   bleLogText.value = ''
   bleActive.value = true
+  let btDevice: any = null
 
   try {
     if (!(navigator as any).bluetooth) {
@@ -192,7 +180,7 @@ async function triggerBLE() {
 
     bleLogText.value = 'Scanning for ' + config.deviceName + '...'
 
-    const btDevice = await (navigator as any).bluetooth.requestDevice({
+    btDevice = await (navigator as any).bluetooth.requestDevice({
       filters: [
         { name: config.deviceName },
         { services: [config.serviceUUID] }
@@ -208,8 +196,6 @@ async function triggerBLE() {
 
     bleStatus.value = 'Trigger sent!'
     bleLogText.value += '\n✓ Display will refresh within 60s'
-
-    if (btDevice.gatt.connected) btDevice.gatt.disconnect()
     setTimeout(() => { bleActive.value = false }, 3000)
 
   } catch (e: unknown) {
@@ -217,6 +203,8 @@ async function triggerBLE() {
     bleLogText.value += '\n' + (err.name || 'Error') + ': ' + (err.message || '')
     bleStatus.value = 'BLE trigger failed: ' + (err.message || '')
     bleActive.value = false
+  } finally {
+    if (btDevice?.gatt?.connected) btDevice.gatt.disconnect()
   }
 }
 
@@ -338,18 +326,18 @@ onUnmounted(() => {
       </div>
     </UCard>
 
-    <!-- Quick Flash -->
+    <!-- Quick Flash (download only) -->
     <UCard class="mb-4">
       <template #header>
-        <span class="font-semibold">Quick Flash (Pre-Built)</span>
+        <span class="font-semibold">Pre-Built Firmware</span>
       </template>
-      <p class="text-sm text-muted mb-3">No build wait. Mock credentials — shows error screen on boot.</p>
+      <p class="text-sm text-muted mb-3">Download and flash manually (no build wait). Mock credentials — shows error screen on boot.</p>
       <div class="flex gap-3">
-        <UButton color="primary" variant="outline" block @click="quickFlash('e1002')">⚡ E1002 Color</UButton>
-        <UButton color="primary" variant="outline" block @click="quickFlash('e1001')">⚡ E1001 BW</UButton>
+        <UButton color="primary" variant="outline" block @click="quickFlash('e1002')">⬇ E1002 Color</UButton>
+        <UButton color="primary" variant="outline" block @click="quickFlash('e1001')">⬇ E1001 BW</UButton>
       </div>
       <p v-if="qfStatus" class="mt-3 text-sm" :class="qfStatus === 'error' ? 'text-red-500' : qfStatus === 'done' ? 'text-green-500' : 'text-yellow-500'">
-        {{ qfStatus === 'building' ? 'Flashing...' : qfStatus === 'done' ? 'Done — check display' : 'Error' }}
+        {{ qfStatus === 'fetching' ? 'Downloading...' : qfStatus === 'done' ? 'Download ready' : 'Error' }}
       </p>
       <pre v-if="qfLog" class="mt-2 text-xs text-muted bg-gray-100 dark:bg-gray-800 p-3 rounded max-h-40 overflow-auto">{{ qfLog }}</pre>
     </UCard>

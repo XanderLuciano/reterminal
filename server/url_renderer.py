@@ -65,12 +65,14 @@ def _render_page(page_config: dict):
         return
 
     with _lock:
+        bw_data = render_dashboard_raw_bw_raw_png(png_data)
         _cache[name] = {
             "config": page_config,
-            "bw_bin": render_dashboard_raw_bw_raw_png(png_data),
+            "bw_bin": bw_data,
             "color_bin": render_dashboard_raw_raw_png(png_data),
             "png": png_data,
             "last_fetch": datetime.now(),
+            "file_size": len(bw_data),
         }
 
 
@@ -115,6 +117,9 @@ def get_page_meta(name: str) -> dict | None:
             "url": entry["config"]["url"],
             "refresh_seconds": entry["config"]["refresh_seconds"],
             "last_fetch": entry["last_fetch"].isoformat() if entry.get("last_fetch") else None,
+            "rendered_at": entry["last_fetch"].strftime("%I:%M %p") if entry.get("last_fetch") else None,
+            "file_size": entry.get("file_size"),
+            "interval_minutes": entry["config"].get("refresh_seconds", 300) // 60,
         }
 
 
