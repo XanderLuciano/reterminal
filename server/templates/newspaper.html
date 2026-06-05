@@ -292,7 +292,15 @@
 <!-- Footer -->
 <div class="footer">
   <span>Updated {{ updated_at }}</span>
-  <span class="battery {% if battery is string %}{% else %}{% if battery|int >= 80 %}battery-full{% elif battery|int >= 30 %}battery-ok{% else %}battery-low{% endif %}{% endif %}">BAT {{ battery }}{% if battery is not string %}%{% endif %}</span>
+  <span class="battery {% if battery_info.pct is none %}battery-ok{% elif battery_info.pct >= 80 %}battery-full{% elif battery_info.pct >= 30 %}battery-ok{% else %}battery-low{% endif %}">
+    {% if battery_info.state == "charging" %}
+    ⚡{{ battery_info.label }}
+    {% elif battery_info.state == "full" %}
+    ▣{{ battery_info.label }}
+    {% else %}
+    ▯{{ battery_info.label }}
+    {% endif %}
+  </span>
 </div>
 
 </body>

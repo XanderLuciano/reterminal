@@ -343,7 +343,7 @@ def fetch_weather() -> dict | None:
 
     # 4. Get sunrise/sunset
     today_date = now.strftime("%Y-%m-%d")
-    sunset_url = f"{SUNRISE_API}?lat=" + str(LAT) + "&lng=" + str(LNG) + "&date={today_date}&formatted=0"
+    sunset_url = f"{SUNRISE_API}?lat={LAT}&lng={LNG}&date={today_date}&formatted=0"
     sunrise_data = _fetch_json(sunset_url)
 
     # ── Parse current conditions ──

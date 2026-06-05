@@ -254,6 +254,23 @@ def get_mock_context(template_name="dashboard.html", battery="87"):
     }
 
 
+def _format_battery(battery_raw: str) -> dict:
+    """Convert battery param to display dict with state and label.
+    
+    Firmware sends: -1=charging, -2=full, >=0=battery pct.
+    Returns: {'state': 'charging'|'full'|'battery', 'label': display string, 'pct': int|None}
+    """
+    try:
+        val = int(battery_raw)
+        if val == -1:
+            return {"state": "charging", "label": "⚡", "pct": None}
+        if val == -2:
+            return {"state": "full", "label": "100%", "pct": 100}
+        return {"state": "battery", "label": f"{val}%", "pct": val}
+    except (ValueError, TypeError):
+        return {"state": "battery", "label": str(battery_raw), "pct": None}
+
+
 # ── Routes ──
 
 @app.route("/dashboard.png")
@@ -261,9 +278,9 @@ def dashboard_png():
     """Dithered dashboard ready for Spectra 6 ePaper display."""
     template = request.args.get("template", "newspaper")
     fname = f"{template}.html"
-    battery = request.args.get("battery", "—")
-    context = get_mock_context(fname, battery)
-    png_data = render_html(fname, context)
+    battery_info = _format_battery(request.args.get("battery", "—"))
+    context = get_mock_context(fname, battery_info["label"])
+    context["battery_info"] = battery_info
     dithered = dither_spectra6(png_data)
 
     buf = io.BytesIO()
@@ -275,9 +292,10 @@ def dashboard_png():
 def preview_png():
     """Full-color preview (before dithering) for design iteration."""
     template = request.args.get("template", "newspaper")
-    battery = request.args.get("battery", "—")
+    battery_info = _format_battery(request.args.get("battery", "—"))
     fname = f"{template}.html"
-    context = get_mock_context(fname, battery)
+    context = get_mock_context(fname, battery_info["label"])
+    context["battery_info"] = battery_info
     png_data = render_html(fname, context)
     return Response(png_data, mimetype="image/png")
 
@@ -290,9 +308,10 @@ def dashboard_bin():
     then calls display.refresh(). No PNG decoding needed.
     """
     template = request.args.get("template", "newspaper")
-    battery = request.args.get("battery", "—")
+    battery_info = _format_battery(request.args.get("battery", "—"))
     fname = f"{template}.html"
-    context = get_mock_context(fname, battery)
+    context = get_mock_context(fname, battery_info["label"])
+    context["battery_info"] = battery_info
     raw = render_dashboard_raw(fname, context)
     return Response(raw, mimetype="application/octet-stream")
 
@@ -305,9 +324,10 @@ def dashboard_bw_bin():
     Same 800×480 resolution, just BW instead of 6-color.
     """
     template = request.args.get("template", "newspaper")
-    battery = request.args.get("battery", "—")
+    battery_info = _format_battery(request.args.get("battery", "—"))
     fname = f"{template}.html"
-    context = get_mock_context(fname, battery)
+    context = get_mock_context(fname, battery_info["label"])
+    context["battery_info"] = battery_info
     raw = render_dashboard_raw_bw(fname, context)
     return Response(raw, mimetype="application/octet-stream")
 
@@ -505,4 +525,15 @@ def api_build_download(build_id, filename):
 
 if __name__ == "__main__":
     start_url_renderer()
+    # Pre-warm weather cache on startup so first ESP32 request doesn't timeout
+    import threading
+    def _prewarm():
+        print("[server] Pre-warming weather cache...")
+        from weather_provider import fetch_weather
+        ctx = fetch_weather()
+        if ctx:
+            print(f"[server] Weather cache ready ({ctx['current']['temp']}°F, {ctx['current']['sky']})")
+        else:
+            print("[server] Weather pre-warm failed (will use fallback)")
+    threading.Thread(target=_prewarm, daemon=True).start()
     app.run(host="0.0.0.0", port=8088, debug=False)

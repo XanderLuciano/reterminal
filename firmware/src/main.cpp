@@ -388,7 +388,13 @@ void refreshAndShow(int page) {
     showError(true);
     return;
   }
-  int battery = readBatteryPercent();
+  // Check charge state: if on USB, battery voltage is unreliable
+  // -1 = actively charging, -2 = fully charged, >=0 = battery percentage
+  ChargeState chg = readChargeState();
+  int battery;
+  if (chg == CHG_ACTIVE) battery = -1;
+  else if (chg == CHG_DONE) battery = -2;
+  else battery = readBatteryPercent();
   int result = fetchPage(page, battery);
   WiFi.disconnect(true);
 
@@ -413,6 +419,51 @@ void goDeepSleep() {
     ESP_EXT1_WAKEUP_ANY_LOW
   );
   esp_deep_sleep_start();
+}
+
+// Light-sleep loop: keeps LED visible while on USB power.
+// On battery → deep sleep; on USB → light sleep with 5s refresh.
+void enterUSBAwareSleep() {
+  ChargeState chg = readChargeState();
+
+  if (chg == CHG_NONE) {
+    // No USB power — deep sleep, LED off
+    digitalWrite(LED_PIN, HIGH);  // active-low off
+    goDeepSleep();
+    return;
+  }
+
+  // USB connected — light sleep loop, LED stays active
+  indicateCharge(chg);
+
+  while (true) {
+    esp_sleep_enable_timer_wakeup(5 * 1000000ULL);  // 5s refresh
+    uint64_t btnMask = (1ULL << BTN_LEFT) | (1ULL << BTN_RIGHT) | (1ULL << BTN_GREEN);
+    esp_sleep_enable_ext1_wakeup(btnMask, ESP_EXT1_WAKEUP_ANY_LOW);
+
+    esp_light_sleep_start();
+
+    esp_sleep_wakeup_cause_t cause = esp_sleep_get_wakeup_cause();
+
+    if (cause == ESP_SLEEP_WAKEUP_EXT1) {
+      // Button pressed during light sleep — handle it like normal button wake
+      delay(50);  // debounce
+      int chosen = selectPage(rtc_active_page);
+      if (chosen >= 0) refreshAndShow(chosen);
+    }
+
+    // Re-read charge state (may have changed: USB plug/unplug, charge complete)
+    chg = readChargeState();
+    if (chg == CHG_NONE) {
+      // USB disconnected — switch to deep sleep
+      digitalWrite(LED_PIN, HIGH);  // LED off
+      goDeepSleep();
+      return;
+    }
+
+    indicateCharge(chg);
+    // Loop: stay in light sleep while USB connected
+  }
 }
 
 void setup() {
@@ -446,7 +497,7 @@ void setup() {
     showSplash();
     delay(500);
     refreshAndShow(0);
-    goDeepSleep();
+    enterUSBAwareSleep();
     return;
   }
 
@@ -455,14 +506,14 @@ void setup() {
   if (btnWake) {
     int chosen = selectPage(rtc_active_page);
     if (chosen >= 0) refreshAndShow(chosen);
-    goDeepSleep();
+    enterUSBAwareSleep();
     return;
   }
 
   uint32_t healthCycles = (HEALTH_INTERVAL_HOURS * 3600) / DEEP_SLEEP_SECONDS;
   if (rtc_sleep_cycles >= healthCycles) {
     refreshAndShow(rtc_active_page);
-    goDeepSleep();
+    enterUSBAwareSleep();
     return;
   }
 
@@ -474,7 +525,7 @@ void setup() {
   delay(200);
 
   if (bleTriggered) refreshAndShow(rtc_active_page);
-  goDeepSleep();
+  enterUSBAwareSleep();
 }
 
 void loop() {}
