@@ -565,131 +565,65 @@
       logEl.textContent += '[' + new Date().toLocaleTimeString() + '] ' + msg + '\n';
       logEl.scrollTop = logEl.scrollHeight;
     };
+    const qStatus = (msg, cls) => {
+      statusEl.textContent = msg;
+      statusEl.className = 'status ' + (cls || '');
+    };
 
     try {
       qLog('Fetching pre-built image for ' + label + '...');
       const resp = await fetch('/prebuilt/' + variant);
       if (!resp.ok) throw new Error('Server returned ' + resp.status);
 
-      const blob = await resp.blob();
-      qLog('Downloaded ' + (blob.size / 1024).toFixed(0) + ' KB');
+      const buf = await resp.arrayBuffer();
+      const binary = new Uint8Array(buf);
+      qLog('Downloaded ' + (binary.length / 1024).toFixed(0) + ' KB');
+
+      if (!navigator.serial) {
+        throw new Error('Web Serial API not available. Use Chrome or Edge.');
+      }
+
+      // Release stale port, then request fresh
+      if (flashPort) {
+        try { await flashPort.close(); } catch (e) {}
+        flashPort = null;
+      }
 
       btn.textContent = '🔌 Connect USB...';
-      statusEl.textContent = 'Select the serial port to begin flashing...';
-      statusEl.className = 'status';
+      qStatus('Select the serial port to begin flashing...');
+      qLog('Requesting serial port...');
 
-      await flashFromBlob(blob, label, qLog, statusEl);
+      try {
+        flashPort = await navigator.serial.requestPort();
+      } catch (e) {
+        if (e.name === 'NotFoundError') {
+          qLog('Cancelled — no port selected');
+          qStatus('Cancelled', 'status-ok');
+          updateQuickFlashButtons();
+          return;
+        }
+        throw e;
+      }
+
+      qLog('Flashing ' + label + '...');
+
+      await doFlash(binary, label, {
+        log: qLog,
+        status: qStatus,
+        progress: (pct) => { qStatus('Flashing: ' + pct + '%'); },
+        onComplete: () => {
+          updateQuickFlashButtons();
+          btn.textContent = '✅ Flashed!';
+          setTimeout(() => updateQuickFlashButtons(), 3000);
+        },
+      });
 
     } catch (e) {
       qLog('ERROR: ' + e.message);
-      statusEl.textContent = '❌ ' + e.message;
-      statusEl.className = 'status status-error';
+      qStatus('❌ ' + e.message, 'status-error');
       btn.disabled = false;
       btn.textContent = origText;
     }
-  }
-
-  async function flashFromBlob(blob, label, logFn, statusEl) {
-    if (!('serial' in navigator)) {
-      throw new Error('Web Serial API not available. Use Chrome or Edge.');
-    }
-
-    // Release any previous session first
-    if (flashPort) {
-      try { await flashPort.close(); } catch (e) {}
-      flashPort = null;
-    }
-
-    logFn('Requesting serial port...');
-    try {
-      flashPort = await navigator.serial.requestPort();
-    } catch (e) {
-      if (e.name === 'NotFoundError') {
-        logFn('Cancelled — no port selected');
-        statusEl.textContent = 'Cancelled';
-        statusEl.className = 'status status-ok';
-        updateQuickFlashButtons();
-        return;
-      }
-      throw e;
-    }
-
-    // Transport handles port.open() internally — don't pre-open
-    const baudRates = [921600, 460800, 230400, 115200];
-    let lastError = null;
-
-    for (let i = 0; i < baudRates.length; i++) {
-      const baud = baudRates[i];
-      let transport = null;
-      let loader = null;
-
-      if (i > 0) {
-        logFn('Retrying at ' + (baud / 1000) + ' kbps...');
-        try { await flashPort.close(); } catch (e) {}
-        await new Promise(r => setTimeout(r, 1000));
-        logFn('Port ready for retry at ' + (baud / 1000) + ' kbps');
-      }
-
-      try {
-        transport = new window.Transport(flashPort);
-        loader = new window.ESPLoader({
-          transport: transport,
-          baudrate: baud,
-          debugLogging: false,
-        });
-
-        logFn(i === 0 ? 'Entering bootloader...' : 'Re-entering bootloader at ' + (baud / 1000) + ' kbps...');
-        await loader.main();
-        logFn('Chip: ' + loader.chipName + ' — flashing at ' + (baud / 1000) + ' kbps');
-
-        const data = new Uint8Array(await blob.arrayBuffer());
-        const flashOptions = {
-          fileArray: [{ data: data, address: 0x0000 }],
-          flashSize: 'keep',
-          flashMode: 'keep',
-          flashFreq: 'keep',
-          eraseAll: false,
-          compress: true,
-          reportProgress: (fileIdx, written, total) => {
-            const pct = Math.round((written / total) * 100);
-            statusEl.textContent = `Flashing: ${pct}%`;
-          },
-        };
-
-        await loader.writeFlash(flashOptions);
-        logFn('Done! Resetting...');
-        await loader.after();
-
-        await transport.disconnect();
-        try { await flashPort.close(); } catch (e) {}
-        flashPort = null;
-
-        statusEl.textContent = '✅ Flash complete! ' + label + ' is rebooting.';
-        statusEl.className = 'status status-ok';
-        logFn('SUCCESS');
-
-        updateQuickFlashButtons();
-        return;
-
-      } catch (innerErr) {
-        if (transport) {
-          try { await transport.disconnect(); } catch (e) { /* best-effort */ }
-        }
-        transport = null;
-        loader = null;
-        lastError = innerErr;
-
-        if (innerErr.message?.includes('stream stopped') ||
-            innerErr.message?.includes('noise') ||
-            innerErr.message?.includes('corruption') ||
-            innerErr.message?.includes('Invalid head of packet') ||
-            innerErr.message?.includes('Bad size')) {
-          if (i < baudRates.length - 1) continue;
-        }
-        throw innerErr;
-      }
-    }
-    throw lastError || new Error('Flash failed at all baud rates');
   }
 
   // ── Advanced toggle ──
@@ -837,7 +771,84 @@
     }, 1000);
   }
 
-  // ── Flash via Web USB ──
+  // ── Shared flash engine (used by build flash + quick flash) ──
+
+  async function doFlash(binary, label, callbacks) {
+    // callbacks: { log(msg), status(msg, cls), progress(pct), onComplete() }
+    const c = callbacks;
+    const baudRates = [921600, 115200];
+    let lastError = null;
+
+    for (let i = 0; i < baudRates.length; i++) {
+      const baud = baudRates[i];
+      let transport = null;
+      let loader = null;
+
+      if (i > 0) {
+        c.log('⚠ Serial error — retrying at ' + (baud / 1000) + ' kbps...');
+        c.status('Retrying at lower speed (' + (baud / 1000) + ' kbps)...', 'status-building');
+        try { await flashPort.close(); } catch (e) {}
+        await sleep(1000);
+        c.log('Reconnecting at ' + (baud / 1000) + ' kbps...');
+      }
+
+      try {
+        transport = new window.Transport(flashPort);
+        loader = new window.ESPLoader({
+          transport: transport,
+          baudrate: baud,
+          terminal: { clean: () => {}, writeLine: (msg) => c.log('ESP: ' + msg), write: () => {} },
+        });
+
+        c.log(i === 0 ? 'Entering bootloader...' : 'Re-entering bootloader...');
+        await loader.main();
+        c.log('Chip: ' + loader.chipName + ' — flashing at ' + (baud / 1000) + ' kbps');
+
+        const flashOptions = {
+          fileArray: [{ data: binary, address: 0x0 }],
+          flashSize: 'keep', flashMode: 'keep', flashFreq: 'keep',
+          eraseAll: false, compress: true,
+          reportProgress: (fileIndex, written, total) => {
+            c.progress(Math.round((written / total) * 100));
+          },
+        };
+        await loader.writeFlash(flashOptions);
+
+        c.log('Done! Resetting device...');
+        await loader.after();
+
+        try { await transport.disconnect(); } catch (e) { /* best-effort */ }
+        try { await flashPort.close(); } catch (e) {}
+        flashPort = null;
+
+        c.log('SUCCESS: Flash complete!');
+        c.status('✅ Flash complete! ' + label + ' is rebooting.', 'status-ok');
+        if (c.onComplete) c.onComplete();
+        return;
+
+      } catch (innerErr) {
+        if (transport) {
+          try { await transport.disconnect(); } catch (e) { /* best-effort */ }
+        }
+        try { await flashPort.close(); } catch (e) { /* ignore */ }
+        transport = null;
+        loader = null;
+        lastError = innerErr;
+
+        const msg = innerErr.message || '';
+        const isSerialCorruption =
+          msg.includes('stream stopped') || msg.includes('noise') ||
+          msg.includes('corruption') || msg.includes('Invalid head of packet') ||
+          msg.includes('Bad size');
+
+        if (isSerialCorruption && i < baudRates.length - 1) continue;
+        throw innerErr;
+      }
+    }
+    throw lastError || new Error('Flash failed at all baud rates');
+  }
+
+  // ── Flash via Web USB (build path) ──
   async function startFlash() {
     const btn = document.getElementById('flash-btn');
     btn.disabled = true;
@@ -880,116 +891,23 @@
         log(`Firmware: ${(binary.length / 1024).toFixed(1)} KB`);
       }
 
-      const baudRates = [921600, 115200];
-      let lastError = null;
-
-      for (let i = 0; i < baudRates.length; i++) {
-        const baud = baudRates[i];
-
-        // Track these so we can clean up the transport on error.
-        // Transport.disconnect() stops its readLoop + releases the
-        // port reader, which is required before port.close() can succeed.
-        let transport = null;
-        let loader = null;
-
-        if (i > 0) {
-          log(`⚠ Serial error — retrying at ${baud / 1000} kbps...`);
-          setStatus('Retrying at lower speed (' + (baud / 1000) + ' kbps)...', 'status-building');
-          document.getElementById('progress-fill').classList.add('indeterminate');
-          // Close port (but keep reference — Transport.can reopen it)
-          // requestPort() needs user gesture; port.open() does not.
-          try { await flashPort.close(); } catch (e) {}
-          await sleep(1000);  // let OS release
-          log('Reconnecting at ' + (baud / 1000) + ' kbps...');
-        }
-
-        try {
-          transport = new window.Transport(flashPort);
-          loader = new window.ESPLoader({
-            transport: transport,
-            baudrate: baud,
-            terminal: {
-              clean: () => {},
-              writeLine: (msg) => log('ESP: ' + msg),
-              write: () => {},
-            },
-          });
-
-          log(i === 0 ? 'Entering bootloader...' : 'Re-entering bootloader...');
-          await loader.main();
-
-          if (i === 0) {
-            log('Chip: ' + loader.chipName + ' — flashing at ' + (baud / 1000) + ' kbps');
-          } else {
-            log('Chip: ' + loader.chipName + ' — using ' + (baud / 1000) + ' kbps (reliable mode)');
-          }
-
-          const flashOptions = {
-            fileArray: [{ data: binary, address: 0x0 }],
-            flashSize: 'keep',
-            flashMode: 'keep',
-            flashFreq: 'keep',
-            eraseAll: false,
-            compress: true,
-            reportProgress: (fileIndex, written, total) => {
-              const pct = ((written / total) * 100).toFixed(0);
-              document.getElementById('progress-text').textContent = `Flashing: ${pct}%`;
-              document.getElementById('progress-fill').classList.remove('indeterminate');
-              document.getElementById('progress-fill').style.width = pct + '%';
-              document.getElementById('progress-fill').style.background = 'var(--accent)';
-            },
-          };
-          await loader.writeFlash(flashOptions);
-
-          log('Done! Resetting device...');
-          await loader.after();  // hard_reset (was hardReset() in older esptool-js)
-
-          // Clean shutdown: disconnect transport first, then close port
-          try { await transport.disconnect(); } catch (e) { /* best-effort */ }
-          flashPort = null;
-
+      await doFlash(binary, deviceLabel, {
+        log: (msg) => log(msg),
+        status: (msg, cls) => setStatus(msg, cls),
+        progress: (pct) => {
+          document.getElementById('progress-text').textContent = `Flashing: ${pct}%`;
+          document.getElementById('progress-fill').classList.remove('indeterminate');
+          document.getElementById('progress-fill').style.width = pct + '%';
+          document.getElementById('progress-fill').style.background = 'var(--accent)';
+        },
+        onComplete: () => {
           document.getElementById('progress-fill').style.width = '100%';
           document.getElementById('progress-fill').style.background = 'var(--green)';
           document.getElementById('progress-text').textContent = 'Flash complete!';
-          setStatus('✅ Flash complete! Device is rebooting.', 'status-ok');
-          log('SUCCESS: Flash complete!' + (i > 0 ? ' (used ' + (baud / 1000) + ' kbps)' : ''));
           btn.textContent = '✅ Flashed!';
           btn.style.background = 'var(--green)';
-          return;
-
-        } catch (innerErr) {
-          // CRITICAL: clean up transport BEFORE closing the port.
-          // Transport.disconnect() stops the readLoop reader, which
-          // must be released before port.close() can succeed.
-          if (transport) {
-            try { await transport.disconnect(); } catch (e) { /* best-effort */ }
-          }
-          // Close the port but KEEP the reference for the retry loop.
-          // port.open() doesn't need a user gesture like requestPort() does.
-          try { await flashPort.close(); } catch (e) { /* ignore */ }
-          transport = null;
-          loader = null;
-
-          lastError = innerErr;
-          const msg = innerErr.message || '';
-
-          // Detect serial corruption / noise errors
-          const isSerialCorruption =
-            msg.includes('stream stopped') ||
-            msg.includes('noise') ||
-            msg.includes('corruption') ||
-            msg.includes('Invalid head of packet') ||
-            msg.includes('Bad size');
-
-          if (isSerialCorruption && i < baudRates.length - 1) {
-            continue; // Fall through to next baud rate
-          }
-
-          throw innerErr;
-        }
-      }
-
-      throw lastError || new Error('Flash failed at all baud rates');
+        },
+      });
 
     } catch (e) {
       // Ensure port is released on final failure
