@@ -217,9 +217,12 @@ void showPage(int page) {
   display.writeImage(framebuf, 0, 0, 800, 480);
   display.refresh();
 #elif defined(E1001_VARIANT)
-  display.fillScreen(GxEPD_WHITE);
-  display.drawBitmap(0, 0, framebuf, 800, 480, GxEPD_BLACK);
-  display.refresh();
+  // GxEPD2_BW requires firstPage/nextPage — drawPixel clips to current page
+  display.firstPage();
+  do {
+    display.fillScreen(GxEPD_WHITE);
+    display.drawBitmap(0, 0, framebuf, 800, 480, GxEPD_BLACK);
+  } while (display.nextPage());
 #endif
   rtc_active_page = page;
   framebuf = nullptr;
@@ -236,9 +239,12 @@ void showEmbeddedBitmap(const uint8_t* bitmap, size_t len) {
   display.refresh();
 #elif defined(E1001_VARIANT)
   (void)len;
-  display.fillScreen(GxEPD_WHITE);
-  display.drawBitmap(0, 0, bitmap, 800, 480, GxEPD_BLACK);
-  display.refresh();
+  // GxEPD2_BW requires drawBitmap inside firstPage/nextPage
+  display.firstPage();
+  do {
+    display.fillScreen(GxEPD_WHITE);
+    display.drawBitmap(0, 0, bitmap, 800, 480, GxEPD_BLACK);
+  } while (display.nextPage());
 #endif
 }
 
