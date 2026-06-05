@@ -168,6 +168,90 @@ def stop():
 
 
 def list_pages():
-    """Return list of configured page names."""
+    """Return list of configured pages with metadata."""
     pages = load_config()
-    return [p["name"] for p in pages]
+    result = []
+    for p in pages:
+        name = p["name"]
+        meta = get_page_meta(name) or {}
+        result.append({
+            "name": name,
+            "url": p.get("url", ""),
+            "title": p.get("title", name),
+            "interval_minutes": p.get("refresh_seconds", 300) // 60,
+            "selector": p.get("selector", ""),
+            "enabled": p.get("enabled", True),
+            "rendered_at": meta.get("rendered_at"),
+            "file_size": meta.get("file_size"),
+        })
+    return result
+
+
+def create_page(name: str, config: dict) -> bool:
+    """Create a new URL page. Returns True on success."""
+    pages = load_config()
+    # Check for duplicates
+    for p in pages:
+        if p["name"] == name:
+            return False
+    page = {
+        "name": name,
+        "url": config.get("url", ""),
+        "title": config.get("title", name),
+        "refresh_seconds": config.get("interval_minutes", 30) * 60,
+        "selector": config.get("selector", ""),
+        "enabled": True,
+    }
+    pages.append(page)
+    _save_config(pages)
+    # Trigger initial render in background thread (don't block request)
+    threading.Thread(target=_render_page, args=(page,), daemon=True).start()
+    return True
+
+
+def update_page(name: str, config: dict) -> bool:
+    """Update an existing URL page. Returns True on success."""
+    pages = load_config()
+    for i, p in enumerate(pages):
+        if p["name"] == name:
+            pages[i] = {
+                "name": name,
+                "url": config.get("url", p.get("url", "")),
+                "title": config.get("title", p.get("title", name)),
+                "refresh_seconds": config.get("interval_minutes", 30) * 60,
+                "selector": config.get("selector", p.get("selector", "")),
+                "enabled": p.get("enabled", True),
+            }
+            _save_config(pages)
+            return True
+    return False
+
+
+def delete_page(name: str) -> bool:
+    """Delete a URL page. Returns True on success."""
+    pages = load_config()
+    original_len = len(pages)
+    pages = [p for p in pages if p["name"] != name]
+    if len(pages) == original_len:
+        return False
+    _save_config(pages)
+    # Remove from cache
+    with _lock:
+        _cache.pop(name, None)
+    return True
+
+
+def rerender_page(name: str) -> bool:
+    """Force re-render of a page. Returns True if page found."""
+    pages = load_config()
+    for p in pages:
+        if p["name"] == name:
+            threading.Thread(target=_render_page, args=(p,), daemon=True).start()
+            return True
+    return False
+
+
+def _save_config(pages: list):
+    """Save page configuration to disk."""
+    url_pages_path = HERE / "url_pages.json"
+    url_pages_path.write_text(json.dumps({"pages": pages}, indent=2))

@@ -1,5 +1,4 @@
 {
-  "_comment": "URL pages — add any URL here and it becomes a page on your display. Add the page 'name' to TEMPLATE_NAMES[] in firmware/src/main.cpp to include it. Remove or set enabled:false to disable.",
   "pages": [
     {
       "name": "homeassistant",
