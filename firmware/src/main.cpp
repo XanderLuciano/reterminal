@@ -370,7 +370,14 @@ void setup() {
 
   pinMode(EPD_RES, OUTPUT); pinMode(EPD_DC, OUTPUT); pinMode(EPD_CS, OUTPUT);
   hspi.begin(EPD_SCK, -1, EPD_MOSI, -1);
+#ifdef E1002_VARIANT
+  // E1002 Spectra 6 panel is sensitive to SPI clock — 200 kHz is reliable.
+  // 2 MHz causes data corruption / blank screen on many units.
+  // See: https://forum.seeedstudio.com/t/295136
+  display.epd2.selectSPI(hspi, SPISettings(200000, MSBFIRST, SPI_MODE0));
+#elif defined(E1001_VARIANT)
   display.epd2.selectSPI(hspi, SPISettings(2000000, MSBFIRST, SPI_MODE0));
+#endif
 
   pinMode(BTN_LEFT, INPUT_PULLUP);
   pinMode(BTN_RIGHT, INPUT_PULLUP);
