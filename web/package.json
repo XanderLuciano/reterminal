@@ -15,7 +15,12 @@
   "dependencies": {
     "@iconify-json/lucide": "^1.2.82",
     "@nuxt/ui": "^4.3.0",
-    "nuxt": "^4.2.2"
+    "@types/better-sqlite3": "^7.6.13",
+    "better-sqlite3": "^12.10.0",
+    "drizzle-kit": "^0.31.10",
+    "drizzle-orm": "^0.45.2",
+    "nuxt": "^4.2.2",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@nuxt/eslint": "^1.12.1",

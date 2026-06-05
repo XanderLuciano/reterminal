@@ -35,6 +35,9 @@ useSeoMeta({
         <UNavigationMenu
           :items="[
             { label: 'Home', icon: 'i-lucide-home', to: '/' },
+            { label: 'Devices', icon: 'i-lucide-tablet', to: '/devices' },
+            { label: 'Screens', icon: 'i-lucide-monitor', to: '/screens' },
+            { label: 'Assign', icon: 'i-lucide-link', to: '/device-screens' },
             { label: 'Flasher', icon: 'i-lucide-zap', to: '/flasher' },
             { label: 'Pages', icon: 'i-lucide-layout-dashboard', to: '/pages' }
           ]"
