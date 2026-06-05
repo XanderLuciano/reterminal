@@ -594,8 +594,13 @@
       throw new Error('Web Serial API not available. Use Chrome or Edge.');
     }
 
+    // Release any previous session first
+    if (flashPort) {
+      try { await flashPort.close(); } catch (e) {}
+      flashPort = null;
+    }
+
     logFn('Requesting serial port...');
-    let flashPort;
     try {
       flashPort = await navigator.serial.requestPort();
     } catch (e) {
@@ -609,9 +614,7 @@
       throw e;
     }
 
-    await flashPort.open({ baudRate: 115200 });
-    logFn('Port opened');
-
+    // Transport handles port.open() internally — don't pre-open
     const baudRates = [921600, 460800, 230400, 115200];
     let lastError = null;
 
@@ -624,8 +627,7 @@
         logFn('Retrying at ' + (baud / 1000) + ' kbps...');
         try { await flashPort.close(); } catch (e) {}
         await new Promise(r => setTimeout(r, 1000));
-        await flashPort.open({ baudRate: 115200 });
-        logFn('Port reopened at ' + baud + ' baud');
+        logFn('Port ready for retry at ' + (baud / 1000) + ' kbps');
       }
 
       try {
