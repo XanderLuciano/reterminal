@@ -232,7 +232,7 @@ void showEmbeddedBitmap(const uint8_t* bitmap, size_t len) {
   display.setFullWindow();
 #ifdef E1002_VARIANT
   (void)len;  // size is fixed for E1002 (192000 bytes)
-  display.writeImage(bitmap, 0, 0, 800, 480, false, false, true);  // pgm=true
+  display.writeImage(bitmap, 0, 0, 800, 480);  // no pgm — ESP32 flash is memory-mapped
   display.refresh();
 #elif defined(E1001_VARIANT)
   (void)len;
