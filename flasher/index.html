@@ -612,19 +612,30 @@
     await flashPort.open({ baudRate: 115200 });
     logFn('Port opened');
 
-    let transport = new window.Transport(flashPort);
-    let loader = new window.ESPLoader({
-      transport: transport,
-      baudrate: 921600,
-      debugLogging: false,
-    });
-
     const baudRates = [921600, 460800, 230400, 115200];
     let lastError = null;
 
     for (let i = 0; i < baudRates.length; i++) {
       const baud = baudRates[i];
+      let transport = null;
+      let loader = null;
+
+      if (i > 0) {
+        logFn('Retrying at ' + (baud / 1000) + ' kbps...');
+        try { await flashPort.close(); } catch (e) {}
+        await new Promise(r => setTimeout(r, 1000));
+        await flashPort.open({ baudRate: 115200 });
+        logFn('Port reopened at ' + baud + ' baud');
+      }
+
       try {
+        transport = new window.Transport(flashPort);
+        loader = new window.ESPLoader({
+          transport: transport,
+          baudrate: baud,
+          debugLogging: false,
+        });
+
         logFn(i === 0 ? 'Entering bootloader...' : 'Re-entering bootloader at ' + (baud / 1000) + ' kbps...');
         await loader.main();
         logFn('Chip: ' + loader.chipName + ' — flashing at ' + (baud / 1000) + ' kbps');
@@ -648,6 +659,7 @@
         await loader.after();
 
         await transport.disconnect();
+        try { await flashPort.close(); } catch (e) {}
         flashPort = null;
 
         statusEl.textContent = '✅ Flash complete! ' + label + ' is rebooting.';
@@ -658,8 +670,11 @@
         return;
 
       } catch (innerErr) {
-        try { await transport.disconnect(); } catch (e) { /* ignore */ }
-        transport = null; loader = null; flashPort = null;
+        if (transport) {
+          try { await transport.disconnect(); } catch (e) { /* best-effort */ }
+        }
+        transport = null;
+        loader = null;
         lastError = innerErr;
 
         if (innerErr.message?.includes('stream stopped') ||
@@ -947,11 +962,11 @@
           if (transport) {
             try { await transport.disconnect(); } catch (e) { /* best-effort */ }
           }
-          // After disconnect(), the port is closed by esptool-js.
-          // Null both so we don't double-clean.
+          // Close the port but KEEP the reference for the retry loop.
+          // port.open() doesn't need a user gesture like requestPort() does.
+          try { await flashPort.close(); } catch (e) { /* ignore */ }
           transport = null;
           loader = null;
-          flashPort = null;
 
           lastError = innerErr;
           const msg = innerErr.message || '';
