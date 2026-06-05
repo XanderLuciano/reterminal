@@ -20,6 +20,7 @@ const uint64_t DEEP_SLEEP_SECONDS = 60;
 const int ADVERTISE_TIMEOUT_S = 10;
 const int HEALTH_INTERVAL_HOURS = 6;
 const int SELECT_TIMEOUT_S = 30;
+const bool ENABLE_BEEPS = true;
 
 // EPD pins (same for both E1001 and E1002)
 #define EPD_SCK 7
@@ -157,7 +158,19 @@ void indicateCharge(ChargeState state) {
 
 // ── Buzzer ──
 
+void beepBoot() {
+  if (!ENABLE_BEEPS) return;
+  tone(BUZZER_PIN, 2600, 80);
+}
+
+void beepError() {
+  if (!ENABLE_BEEPS) return;
+  tone(BUZZER_PIN, 1800, 100); delay(150);
+  tone(BUZZER_PIN, 1800, 100);
+}
+
 void beepPage(int page) {
+  if (!ENABLE_BEEPS) return;
   int count = page + 1;
   for (int i = 0; i < count; i++) {
     tone(BUZZER_PIN, 2200, 40);
@@ -167,6 +180,7 @@ void beepPage(int page) {
 }
 
 void beepConfirm() {
+  if (!ENABLE_BEEPS) return;
   tone(BUZZER_PIN, 1800, 60); delay(100);
   tone(BUZZER_PIN, 2200, 60); delay(100);
   tone(BUZZER_PIN, 2600, 60);
@@ -224,6 +238,7 @@ void showPage(int page) {
 #endif
   rtc_active_page = page;
   framebuf = nullptr;
+  beepConfirm();
 }
 
 // ── Screen helpers (use writeImage to avoid GxEPD2_7C paged-text bugs) ──
@@ -257,6 +272,7 @@ void showError(bool isWifiError) {
   );
 #endif
 
+  beepError();
   delay(500);
   // Wait for button press before going back to sleep
   while (digitalRead(BTN_LEFT) == HIGH &&
@@ -273,6 +289,7 @@ void showSplash() {
 #elif defined(E1001_VARIANT)
   showEmbeddedBitmap(splash_e1001_bw, splash_e1001_bw_len);
 #endif
+  beepBoot();
 }
 
 // ── Button selection ──

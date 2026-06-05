@@ -280,6 +280,13 @@
       <input type="text" id="ble-name" placeholder="E1002-Dashboard" maxlength="20">
       <div class="hint">Leave empty for default</div>
     </div>
+    <div class="field" style="margin-top:1rem">
+      <label style="display:flex;align-items:center;gap:.5rem;cursor:pointer">
+        <input type="checkbox" id="enable-beeps" checked style="width:auto;accent-color:var(--accent)">
+        <span>Enable buzzer beeps</span>
+      </label>
+      <div class="hint">Beeps on splash, errors, page changes, and confirmations</div>
+    </div>
   </div>
 
   <!-- Quick Flash -->
@@ -648,6 +655,7 @@
       health_interval_hours: parseInt(document.getElementById('health-interval').value) || 6,
       select_timeout_s: parseInt(document.getElementById('select-timeout').value) || 30,
       ble_device_name: bleName || undefined,
+      enable_beeps: document.getElementById('enable-beeps').checked,
     };
   }
 

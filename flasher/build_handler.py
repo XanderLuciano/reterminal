@@ -393,6 +393,9 @@ def _patch_main_cpp(source: str, config: dict, device: str) -> str:
             default_name = "E1001-Dashboard" if device == "e1001" else "E1002-Dashboard"
             name = config.get("ble_device_name", default_name)
             result.append(f'  #define BLE_DEVICE_NAME "{name}"')
+        elif "const bool ENABLE_BEEPS" in line:
+            beeps = "true" if config.get("enable_beeps", True) else "false"
+            result.append(f"const bool ENABLE_BEEPS = {beeps};")
         else:
             result.append(line)
 
