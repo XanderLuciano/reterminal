@@ -284,16 +284,17 @@
 
   <!-- Quick Flash -->
   <div class="card" id="quick-flash-card">
-    <h2>⚡ Quick Flash</h2>
+    <h2>⚡ Quick Flash (Pre-Built)</h2>
     <p style="font-size:.82rem;color:var(--muted);margin-bottom:.75rem;">
-      Flash a pre-built image — no build wait. Creds are <code>test/test</code>
-      so it'll show the error screen (good for hardware verification).
+      No build wait. Mock creds (<code>test/test</code>) — shows error screen on boot.
     </p>
-    <div style="display:flex;gap:.5rem;align-items:center;">
-      <button class="btn btn-flash" id="quick-flash-btn" onclick="quickFlash()" style="flex:1">
-        ⚡ Flash Pre-Built E1002
+    <div style="display:flex;gap:.75rem;">
+      <button class="btn btn-flash" id="qf-e1002" onclick="quickFlash('e1002')" style="flex:1">
+        ⚡ E1002 Color
       </button>
-      <span id="quick-flash-size" style="font-size:.78rem;color:var(--muted);white-space:nowrap"></span>
+      <button class="btn btn-flash" id="qf-e1001" onclick="quickFlash('e1001')" style="flex:1">
+        ⚡ E1001 BW
+      </button>
     </div>
     <p id="quick-flash-hint" style="font-size:.75rem;color:var(--muted);margin-top:.5rem"></p>
     <div class="status" id="quick-flash-status"></div>
@@ -507,7 +508,6 @@
       const isE1001 = r.value === 'e1001';
       document.getElementById('ble-name').placeholder = isE1001 ? 'E1001-Dashboard' : 'E1002-Dashboard';
       updateUrlPreview();
-      updateQuickFlashButton();
     });
   });
 
@@ -518,46 +518,41 @@
     try {
       const resp = await fetch('/api/prebuilt');
       prebuiltInfo = await resp.json();
-      updateQuickFlashButton();
+      updateQuickFlashButtons();
     } catch (e) {
       document.getElementById('quick-flash-hint').textContent = 'Pre-built images not available (server offline?)';
     }
   }
   loadPrebuiltInfo();
 
-  function updateQuickFlashButton() {
-    const device = document.querySelector('input[name="device"]:checked').value;
-    const btn = document.getElementById('quick-flash-btn');
-    const sizeEl = document.getElementById('quick-flash-size');
-    const hintEl = document.getElementById('quick-flash-hint');
-    const label = device === 'e1002' ? 'E1002' : 'E1001';
-
-    if (!prebuiltInfo || !prebuiltInfo[device] || !prebuiltInfo[device].available) {
-      btn.textContent = '⚡ Flash Pre-Built ' + label;
-      btn.disabled = true;
-      btn.style.opacity = '0.4';
-      sizeEl.textContent = '';
-      hintEl.textContent = 'Run scripts/generate_embedded_screens.py first';
-      return;
+  function updateQuickFlashButtons() {
+    ['e1002', 'e1001'].forEach(variant => {
+      const btn = document.getElementById('qf-' + variant);
+      if (!btn) return;
+      const info = prebuiltInfo?.[variant];
+      if (!info || !info.available) {
+        btn.disabled = true;
+        btn.style.opacity = '0.4';
+        btn.textContent = '⚡ ' + variant.toUpperCase() + ' (unavailable)';
+        return;
+      }
+      const sizeKB = (info.size / 1024).toFixed(0);
+      btn.disabled = false;
+      btn.style.opacity = '1';
+      btn.textContent = '⚡ ' + variant.toUpperCase() + ' (' + sizeKB + ' KB)';
+    });
+    if (prebuiltInfo) {
+      const hintEl = document.getElementById('quick-flash-hint');
+      hintEl.textContent = prebuiltInfo.e1002?.note || '';
     }
-
-    const info = prebuiltInfo[device];
-    const sizeKB = (info.size / 1024).toFixed(0);
-    btn.textContent = '⚡ Flash Pre-Built ' + label;
-    btn.disabled = false;
-    btn.style.opacity = '1';
-    sizeEl.textContent = sizeKB + ' KB';
-    hintEl.textContent = info.note;
   }
 
-  // Quick flash uses the same flash logic as local file upload,
-  // just fetching the binary from /prebuilt/<variant> first.
-  async function quickFlash() {
-    const btn = document.getElementById('quick-flash-btn');
+  async function quickFlash(variant) {
+    const btn = document.getElementById('qf-' + variant);
     const statusEl = document.getElementById('quick-flash-status');
     const logEl = document.getElementById('quick-flash-log');
-    const device = document.querySelector('input[name="device"]:checked').value;
-    const label = device === 'e1002' ? 'E1002' : 'E1001';
+    const label = variant.toUpperCase();
+    const origText = btn.textContent;
 
     btn.disabled = true;
     btn.textContent = '⬇️ Downloading...';
@@ -573,7 +568,7 @@
 
     try {
       qLog('Fetching pre-built image for ' + label + '...');
-      const resp = await fetch('/prebuilt/' + device);
+      const resp = await fetch('/prebuilt/' + variant);
       if (!resp.ok) throw new Error('Server returned ' + resp.status);
 
       const blob = await resp.blob();
@@ -583,59 +578,56 @@
       statusEl.textContent = 'Select the serial port to begin flashing...';
       statusEl.className = 'status';
 
-      // Reuse the existing flashBinary function from the local file path
-      await flashFromBlob(blob, device.toUpperCase(), qLog, statusEl);
+      await flashFromBlob(blob, label, qLog, statusEl);
 
     } catch (e) {
       qLog('ERROR: ' + e.message);
       statusEl.textContent = '❌ ' + e.message;
       statusEl.className = 'status status-error';
       btn.disabled = false;
-      btn.textContent = '⚡ Flash Pre-Built ' + label;
+      btn.textContent = origText;
     }
   }
 
-  async function flashFromBlob(blob, label, log, statusEl) {
+  async function flashFromBlob(blob, label, logFn, statusEl) {
     if (!('serial' in navigator)) {
       throw new Error('Web Serial API not available. Use Chrome or Edge.');
     }
 
-    log('Requesting serial port...');
+    logFn('Requesting serial port...');
     let flashPort;
     try {
       flashPort = await navigator.serial.requestPort();
     } catch (e) {
       if (e.name === 'NotFoundError') {
-        log('Cancelled — no port selected');
+        logFn('Cancelled — no port selected');
         statusEl.textContent = 'Cancelled';
         statusEl.className = 'status status-ok';
-        document.getElementById('quick-flash-btn').disabled = false;
-        document.getElementById('quick-flash-btn').textContent = '⚡ Flash Pre-Built ' + label;
+        updateQuickFlashButtons();
         return;
       }
       throw e;
     }
 
     await flashPort.open({ baudRate: 115200 });
-    log('Port opened');
+    logFn('Port opened');
 
-    const transport = new window.Transport(flashPort);
-    const loader = new window.ESPLoader({
+    let transport = new window.Transport(flashPort);
+    let loader = new window.ESPLoader({
       transport: transport,
       baudrate: 921600,
       debugLogging: false,
     });
 
-    // Baud rate fallback chain
     const baudRates = [921600, 460800, 230400, 115200];
     let lastError = null;
 
     for (let i = 0; i < baudRates.length; i++) {
       const baud = baudRates[i];
       try {
-        log(i === 0 ? 'Entering bootloader...' : 'Re-entering bootloader at ' + (baud / 1000) + ' kbps...');
+        logFn(i === 0 ? 'Entering bootloader...' : 'Re-entering bootloader at ' + (baud / 1000) + ' kbps...');
         await loader.main();
-        log('Chip: ' + loader.chipName + ' — flashing at ' + (baud / 1000) + ' kbps');
+        logFn('Chip: ' + loader.chipName + ' — flashing at ' + (baud / 1000) + ' kbps');
 
         const data = new Uint8Array(await blob.arrayBuffer());
         const flashOptions = {
@@ -647,12 +639,12 @@
           compress: true,
           reportProgress: (fileIdx, written, total) => {
             const pct = Math.round((written / total) * 100);
-            document.getElementById('quick-flash-status').textContent = `Flashing: ${pct}%`;
+            statusEl.textContent = `Flashing: ${pct}%`;
           },
         };
 
         await loader.writeFlash(flashOptions);
-        log('Done! Resetting...');
+        logFn('Done! Resetting...');
         await loader.after();
 
         await transport.disconnect();
@@ -660,11 +652,9 @@
 
         statusEl.textContent = '✅ Flash complete! ' + label + ' is rebooting.';
         statusEl.className = 'status status-ok';
-        log('SUCCESS');
+        logFn('SUCCESS');
 
-        document.getElementById('quick-flash-btn').disabled = false;
-        document.getElementById('quick-flash-btn').textContent = '✅ Done!';
-        setTimeout(() => updateQuickFlashButton(), 3000);
+        updateQuickFlashButtons();
         return;
 
       } catch (innerErr) {
