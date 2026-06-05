@@ -217,12 +217,10 @@ void showPage(int page) {
   display.writeImage(framebuf, 0, 0, 800, 480);
   display.refresh();
 #elif defined(E1001_VARIANT)
-  // GxEPD2_BW requires firstPage/nextPage — drawPixel clips to current page
-  display.firstPage();
-  do {
-    display.fillScreen(GxEPD_WHITE);
-    display.drawBitmap(0, 0, framebuf, 800, 480, GxEPD_BLACK);
-  } while (display.nextPage());
+  // Write bit-packed framebuf directly to controller — bypasses Adafruit_GFX paging
+  display.epd2.writeImage(framebuf, 0, 0, 800, 480);
+  display.epd2.refresh(false);
+  display.epd2.powerOff();
 #endif
   rtc_active_page = page;
   framebuf = nullptr;
@@ -238,13 +236,11 @@ void showEmbeddedBitmap(const uint8_t* bitmap, size_t len) {
   display.writeImage(bitmap, 0, 0, 800, 480);  // no pgm — ESP32 flash is memory-mapped
   display.refresh();
 #elif defined(E1001_VARIANT)
+  // Bypass Adafruit_GFX drawBitmap — write directly to controller for cleaner output
   (void)len;
-  // GxEPD2_BW requires drawBitmap inside firstPage/nextPage
-  display.firstPage();
-  do {
-    display.fillScreen(GxEPD_WHITE);
-    display.drawBitmap(0, 0, bitmap, 800, 480, GxEPD_BLACK);
-  } while (display.nextPage());
+  display.epd2.writeImage(bitmap, 0, 0, 800, 480, false, false, false);
+  display.epd2.refresh(false);  // false = full refresh, not partial
+  display.epd2.powerOff();
 #endif
 }
 
