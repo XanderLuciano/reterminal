@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    width: 800px; height: 480px;
+    background: #ffffff;
+    font-family: -apple-system, 'Segoe UI', system-ui, sans-serif;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    color: #222222;
+  }
+  .icon { font-size: 64px; margin-bottom: 12px; }
+  h1 { font-size: 28px; font-weight: 700; margin: 0 0 8px 0; }
+  .msg { font-size: 20px; color: #444444; margin-bottom: 4px; }
+  .hint { font-size: 16px; color: #888888; margin-top: 20px; }
+</style></head><body>
+  <div class="icon">⚠️</div>
+  <h1>Connection Error</h1>
+  <div class="msg">{{ message }}</div>
+  <div class="hint">Check WiFi or server · Press any button to retry</div>
+</body></html>

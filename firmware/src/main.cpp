@@ -11,6 +11,8 @@
   #include <GxEPD2_BW.h>
 #endif
 
+#include "embedded_screens.h"
+
 // ── Shared config ──
 const int NUM_PAGES = 3;
 const char* TEMPLATE_NAMES[] = {"newspaper", "weather", "maintenance"};
@@ -223,27 +225,37 @@ void showPage(int page) {
   framebuf = nullptr;
 }
 
-// ── Error display ──
+// ── Screen helpers (use writeImage to avoid GxEPD2_7C paged-text bugs) ──
 
-void showError(const char* msg) {
+void showEmbeddedBitmap(const uint8_t* bitmap, size_t len) {
   display.init(0);
   display.setFullWindow();
-  display.firstPage();
-  do {
-    display.fillScreen(GxEPD_WHITE);
-    display.setCursor(30, 200);
-    display.setTextColor(GxEPD_BLACK);
-    display.println("⚠️ Connection Error");
-    display.println();
-    display.setCursor(30, 260);
-    display.println(msg);
-    display.setCursor(30, 310);
-    display.println("Check WiFi or server.");
-    display.setCursor(30, 360);
-    display.println("Press any button to retry.");
-  } while (display.nextPage());
-  delay(1000);
+#ifdef E1002_VARIANT
+  (void)len;  // size is fixed for E1002 (192000 bytes)
+  display.writeImage(bitmap, 0, 0, 800, 480, false, false, true);  // pgm=true
+  display.refresh();
+#elif defined(E1001_VARIANT)
+  (void)len;
+  display.fillScreen(GxEPD_WHITE);
+  display.drawBitmap(0, 0, bitmap, 800, 480, GxEPD_BLACK);
+  display.refresh();
+#endif
+}
 
+void showError(bool isWifiError) {
+#ifdef E1002_VARIANT
+  showEmbeddedBitmap(
+    isWifiError ? error_wifi_e1002 : error_fetch_e1002,
+    isWifiError ? error_wifi_e1002_len : error_fetch_e1002_len
+  );
+#elif defined(E1001_VARIANT)
+  showEmbeddedBitmap(
+    isWifiError ? error_wifi_e1001_bw : error_fetch_e1001_bw,
+    isWifiError ? error_wifi_e1001_bw_len : error_fetch_e1001_bw_len
+  );
+#endif
+
+  delay(500);
   // Wait for button press before going back to sleep
   while (digitalRead(BTN_LEFT) == HIGH &&
          digitalRead(BTN_RIGHT) == HIGH &&
@@ -251,6 +263,14 @@ void showError(const char* msg) {
     delay(50);
   }
   delay(200);  // debounce
+}
+
+void showSplash() {
+#ifdef E1002_VARIANT
+  showEmbeddedBitmap(splash_e1002, splash_e1002_len);
+#elif defined(E1001_VARIANT)
+  showEmbeddedBitmap(splash_e1001_bw, splash_e1001_bw_len);
+#endif
 }
 
 // ── Button selection ──
@@ -316,13 +336,13 @@ void startBLE() {
 
 void refreshAndShow(int page) {
   if (!connectWiFi()) {
-    showError("WiFi connection failed.");
+    showError(true);
     return;
   }
   int battery = readBatteryPercent();
   if (!fetchPage(page, battery)) {
     WiFi.disconnect(true);
-    showError("Failed to fetch dashboard.");
+    showError(false);
     return;
   }
   WiFi.disconnect(true);
@@ -359,23 +379,9 @@ void setup() {
   esp_sleep_wakeup_cause_t wakeCause = esp_sleep_get_wakeup_cause();
   bool btnWake = (wakeCause == ESP_SLEEP_WAKEUP_EXT1);
 
-#ifdef E1002_VARIANT
-  const char* DEVICE_NAME = "E1002";
-#elif defined(E1001_VARIANT)
-  const char* DEVICE_NAME = "E1001";
-#endif
-
   if (rtc_first_boot) {
     rtc_first_boot = false; rtc_sleep_cycles = 0;
-    display.init(0);
-    display.setFullWindow();
-    display.firstPage();
-    do {
-      display.fillScreen(GxEPD_WHITE);
-      display.setCursor(30, 220);
-      display.print(DEVICE_NAME);
-      display.print(" Dashboard");
-    } while (display.nextPage());
+    showSplash();
     delay(500);
     refreshAndShow(0);
     goDeepSleep();
