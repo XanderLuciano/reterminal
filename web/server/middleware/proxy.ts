@@ -6,7 +6,7 @@ export default defineEventHandler(async (event) => {
 
   // Paths handled by Flask (dashboard rendering, builds, weather, pages)
   const FLASK_PREFIXES = [
-    '/api/build', '/api/health', '/api/trigger', '/api/trigger-e1001',
+    '/api/build', '/api/prebuilt', '/api/health', '/api/trigger', '/api/trigger-e1001',
     '/api/page', '/api/pages', '/prebuilt', '/dashboard', '/preview.png',
     '/health', '/page', '/pages', '/trigger', '/trigger-e1001', '/demo'
   ]
