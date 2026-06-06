@@ -216,7 +216,7 @@ onMounted(async () => {
               <h3 class="font-semibold truncate">{{ page.title || page.name }}</h3>
               <UBadge variant="subtle" size="xs">{{ page.name }}</UBadge>
             </div>
-            <p class="text-sm text-muted truncate mb-2">{{ page.url }}</p>
+            <p class="text-sm text-muted truncate mb-2" v-if="!page.url?.includes('127.0.0.1') && !page.url?.includes('localhost')">{{ page.url }}</p>
             <div class="flex items-center gap-4 text-xs text-muted">
               <span>Refresh: {{ page.interval_minutes }}min</span>
               <span v-if="page.rendered_at">Rendered: {{ page.rendered_at }}</span>
