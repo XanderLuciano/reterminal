@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { width: 800px; height: 480px; font-family: system-ui, sans-serif; background: linear-gradient(180deg, #1a3a5c, #0d1b2a); color: #eaeaea; overflow: hidden; }
+.top { display: flex; align-items: center; justify-content: space-between; padding: 16px 24px; }
+.top h1 { font-size: 22px; }
+.top .temp { font-size: 48px; font-weight: 700; color: #ff8800; }
+.top .sky { font-size: 14px; color: #aabbcc; }
+.grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; padding: 0 24px; }
+.item { background: rgba(255,255,255,.06); border-radius: 8px; padding: 12px; }
+.item .val { font-size: 18px; font-weight: 600; }
+.item .lbl { font-size: 10px; color: #888; margin-top: 2px; }
+.forecast { display: flex; gap: 8px; padding: 16px 24px; }
+.day { flex: 1; text-align: center; background: rgba(255,255,255,.05); border-radius: 8px; padding: 10px; }
+.day .name { font-size: 11px; color: #888; }
+.day .icon { font-size: 22px; margin: 4px 0; }
+.day .hi { font-size: 14px; font-weight: 600; }
+.day .lo { font-size: 12px; color: #666; }
+.sun { padding: 8px 24px; display: flex; align-items: center; gap: 8px; font-size: 11px; color: #888; }
+.sun .bar { flex: 1; height: 4px; background: rgba(255,255,255,.1); border-radius: 2px; }
+.sun .bar .fill { height: 100%; width: 65%; background: #ff8800; border-radius: 2px; }
+</style></head>
+<body>
+<div class="top">
+  <div>
+    <h1>🌤 Moorpark, CA</h1>
+    <div class="sky">Partly Sunny</div>
+  </div>
+  <div class="temp">72°</div>
+</div>
+<div class="grid">
+  <div class="item"><div class="val">18 mph</div><div class="lbl">Wind (WSW)</div></div>
+  <div class="item"><div class="val">48%</div><div class="lbl">Humidity</div></div>
+  <div class="item"><div class="val">6.4</div><div class="lbl">UV Index (High)</div></div>
+  <div class="item"><div class="val">52</div><div class="lbl">AQI (Moderate)</div></div>
+  <div class="item"><div class="val">82° / 58°</div><div class="lbl">High / Low</div></div>
+  <div class="item"><div class="val">88°</div><div class="lbl">Feels Like</div></div>
+</div>
+<div class="sun">
+  <span>🌅 5:49 AM</span>
+  <div class="bar"><div class="fill"></div></div>
+  <span>🌇 7:55 PM</span>
+  <span style="margin-left:auto">14h 6m daylight</span>
+</div>
+<div class="forecast">
+  <div class="day"><div class="name">Sat</div><div class="icon">☀️</div><div class="hi">85°</div><div class="lo">60°</div></div>
+  <div class="day"><div class="name">Sun</div><div class="icon">⛅</div><div class="hi">82°</div><div class="lo">59°</div></div>
+  <div class="day"><div class="name">Mon</div><div class="icon">🌤</div><div class="hi">78°</div><div class="lo">56°</div></div>
+  <div class="day"><div class="name">Tue</div><div class="icon">☁️</div><div class="hi">74°</div><div class="lo">54°</div></div>
+  <div class="day"><div class="name">Wed</div><div class="icon">🌧</div><div class="hi">68°</div><div class="lo">52°</div></div>
+</div>
+</body>
+</html>

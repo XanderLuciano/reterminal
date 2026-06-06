@@ -8,7 +8,7 @@ export default defineEventHandler(async (event) => {
   const FLASK_PREFIXES = [
     '/api/build', '/api/health', '/api/trigger', '/api/trigger-e1001',
     '/api/page', '/api/pages', '/prebuilt', '/dashboard', '/preview.png',
-    '/health'
+    '/health', '/page', '/pages', '/trigger', '/trigger-e1001'
   ]
 
   if (!FLASK_PREFIXES.some(p => path.startsWith(p))) return
@@ -22,6 +22,9 @@ export default defineEventHandler(async (event) => {
   try {
     const headers: Record<string, string> = {}
     if (body) headers['Content-Type'] = 'application/json'
+    // Forward If-None-Match for ETag conditional requests (304 caching)
+    const ifNoneMatch = getHeader(event, 'If-None-Match')
+    if (ifNoneMatch) headers['If-None-Match'] = ifNoneMatch
 
     const res = await fetch(flaskUrl, { method, headers, body })
     const ct = res.headers.get('content-type') || 'application/octet-stream'
@@ -31,6 +34,8 @@ export default defineEventHandler(async (event) => {
 
     setResponseStatus(event, res.status)
     setHeader(event, 'Content-Type', ct)
+    // Forward ETag for conditional caching
+    if (res.headers.get('etag')) setHeader(event, 'ETag', res.headers.get('etag')!)
     return data
   } catch {
     setResponseStatus(event, 502)

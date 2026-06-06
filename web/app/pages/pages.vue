@@ -203,14 +203,11 @@ onMounted(async () => {
             @click="previewPage(page.name)"
           >
             <img
-              v-if="previewUrl && previewName === page.name"
-              :src="previewUrl"
+              :src="`${API_BASE}/page/${page.name}.png`"
               :alt="page.title"
               class="w-full h-full object-cover"
+              loading="lazy"
             >
-            <div v-else class="w-full h-full flex items-center justify-center text-muted">
-              <UIcon name="i-lucide-image" class="text-2xl" />
-            </div>
           </div>
 
           <!-- Page info -->

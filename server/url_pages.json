@@ -1,16 +1,25 @@
 {
   "pages": [
     {
-      "name": "homeassistant",
-      "url": "http://YOUR_HA_IP:8123/lovelace/0?viewport=800x480",
+      "name": "home-dashboard",
+      "url": "http://127.0.0.1:8088/demo/home",
+      "title": "Home Dashboard",
       "refresh_seconds": 300,
-      "enabled": false
+      "enabled": true
     },
     {
-      "name": "grafana",
-      "url": "http://YOUR_GRAFANA_IP:3000/d-solo/abc123/dashboard?theme=light&width=800&height=480",
+      "name": "weather",
+      "url": "http://127.0.0.1:8088/demo/weather",
+      "title": "Weather",
       "refresh_seconds": 600,
-      "enabled": false
+      "enabled": true
+    },
+    {
+      "name": "maintenance",
+      "url": "http://127.0.0.1:8088/demo/maintenance",
+      "title": "Maintenance",
+      "refresh_seconds": 600,
+      "enabled": true
     }
   ]
 }

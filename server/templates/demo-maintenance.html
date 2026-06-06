@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { width: 800px; height: 480px; font-family: system-ui, sans-serif; background: #0d1117; color: #eaeaea; overflow: hidden; }
+.header { padding: 16px 24px; border-bottom: 1px solid #222; display: flex; align-items: center; gap: 8px; }
+.header h1 { font-size: 18px; }
+.header span { font-size: 11px; color: #666; margin-left: auto; }
+.list { padding: 12px 24px; }
+.item { display: flex; align-items: center; padding: 10px 0; border-bottom: 1px solid #1a1a1a; gap: 12px; }
+.item .icon { font-size: 20px; width: 32px; text-align: center; }
+.item .info { flex: 1; }
+.item .info .name { font-size: 14px; font-weight: 500; }
+.item .info .meta { font-size: 10px; color: #555; margin-top: 2px; }
+.item .status { font-size: 11px; font-weight: 600; padding: 3px 8px; border-radius: 4px; }
+.ok { background: rgba(78,204,163,.15); color: #4ecca3; }
+.warn { background: rgba(240,165,0,.15); color: #f0a500; }
+.bad { background: rgba(233,69,96,.15); color: #e94560; }
+.bar-wrap { width: 80px; height: 4px; background: #222; border-radius: 2px; margin-top: 4px; }
+.bar-fill { height: 100%; border-radius: 2px; }
+.summary { display: flex; gap: 16px; padding: 12px 24px; }
+.box { flex: 1; text-align: center; padding: 10px; border-radius: 8px; }
+.box .num { font-size: 24px; font-weight: 700; }
+.box .lbl { font-size: 10px; color: #888; }
+</style></head>
+<body>
+<div class="header">
+  <span>🔧</span><h1>Home Maintenance</h1>
+  <span>Updated 6:42 PM</span>
+</div>
+<div class="summary">
+  <div class="box" style="background:rgba(233,69,96,.1)"><div class="num" style="color:#e94560">1</div><div class="lbl">Overdue</div></div>
+  <div class="box" style="background:rgba(240,165,0,.1)"><div class="num" style="color:#f0a500">2</div><div class="lbl">Due Soon</div></div>
+  <div class="box" style="background:rgba(78,204,163,.1)"><div class="num" style="color:#4ecca3">12</div><div class="lbl">OK</div></div>
+</div>
+<div class="list">
+  <div class="item">
+    <div class="icon">🪟</div>
+    <div class="info">
+      <div class="name">Window tracks & sills</div>
+      <div class="meta">Last: May 21 · every 60d</div>
+      <div class="bar-wrap"><div class="bar-fill" style="width:75%;background:#f0a500"></div></div>
+    </div>
+    <div class="status warn">15d left</div>
+  </div>
+  <div class="item">
+    <div class="icon">🌀</div>
+    <div class="info">
+      <div class="name">HVAC return filter</div>
+      <div class="meta">Last: Mar 7 · every 90d</div>
+      <div class="bar-wrap"><div class="bar-fill" style="width:99%;background:#e94560"></div></div>
+    </div>
+    <div class="status bad">1d OVERDUE</div>
+  </div>
+  <div class="item">
+    <div class="icon">🔥</div>
+    <div class="info">
+      <div class="name">Hot water tank flush</div>
+      <div class="meta">Last: Feb 5 · annual</div>
+      <div class="bar-wrap"><div class="bar-fill" style="width:33%;background:#4ecca3"></div></div>
+    </div>
+    <div class="status ok">244d left</div>
+  </div>
+  <div class="item">
+    <div class="icon">🔌</div>
+    <div class="info">
+      <div class="name">Generator test run</div>
+      <div class="meta">Last: May 8 · every 90d</div>
+      <div class="bar-wrap"><div class="bar-fill" style="width:31%;background:#4ecca3"></div></div>
+    </div>
+    <div class="status ok">62d left</div>
+  </div>
+</div>
+</body>
+</html>

@@ -302,6 +302,15 @@ def preview_png():
     return Response(png_data, mimetype="image/png")
 
 
+def _etag_response(data: bytes, mimetype: str = "application/octet-stream"):
+    """Return a Response with ETag header. Returns 304 if client's If-None-Match matches."""
+    import hashlib
+    etag = hashlib.md5(data).hexdigest()
+    if request.headers.get("If-None-Match") == etag:
+        return Response(status=304)
+    return Response(data, mimetype=mimetype, headers={"ETag": etag})
+
+
 @app.route("/dashboard.bin")
 def dashboard_bin():
     """Raw nibble-packed binary for E1002 Spectra 6 color framebuffer.
@@ -315,7 +324,7 @@ def dashboard_bin():
     context = get_mock_context(fname, battery_info["label"])
     context["battery_info"] = battery_info
     raw = render_dashboard_raw(fname, context)
-    return Response(raw, mimetype="application/octet-stream")
+    return _etag_response(raw, "application/octet-stream")
 
 
 @app.route("/dashboard-bw.bin")
@@ -331,7 +340,7 @@ def dashboard_bw_bin():
     context = get_mock_context(fname, battery_info["label"])
     context["battery_info"] = battery_info
     raw = render_dashboard_raw_bw(fname, context)
-    return Response(raw, mimetype="application/octet-stream")
+    return _etag_response(raw, "application/octet-stream")
 
 
 @app.route("/dashboard-bw.png")
@@ -398,6 +407,17 @@ def trigger_e1001_refresh():
         ble_status = f"BLE trigger failed: {e}"
 
     return {"status": "ok", "ble": ble_status, "message": f"Fresh {template} BW render ready for E1001"}
+
+
+# ── Demo pages (sample content for page manager previews) ──
+
+@app.route("/demo/<name>")
+def demo_page(name):
+    """Serve demo HTML pages for sample e-ink page previews."""
+    template_path = HERE / "templates" / f"demo-{name}.html"
+    if template_path.exists():
+        return template_path.read_text()
+    return "Demo not found", 404
 
 
 # ── URL Pages (external URL screenshots) ──
