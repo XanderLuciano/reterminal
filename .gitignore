@@ -25,3 +25,9 @@ server/*.jpg
 Thumbs.db
 *~
 flasher/builds/
+
+# Nuxt web app
+web/node_modules/
+web/.output/
+web/.nuxt/
+web/.data/

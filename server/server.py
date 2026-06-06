@@ -11,9 +11,10 @@ import sys
 from datetime import datetime
 from pathlib import Path
 from flask import Flask, Response, request, send_from_directory
+from flask_cors import CORS
 from renderer import render_html, dither_spectra6, render_dashboard_raw, render_dashboard_raw_bw, dither_bw
 from weather_provider import fetch_weather
-from url_renderer import get_page_binary, get_page_png, get_page_meta, start as start_url_renderer, list_pages
+from url_renderer import get_page_binary, get_page_png, get_page_meta, start as start_url_renderer, list_pages, create_page, update_page, delete_page, rerender_page
 
 # Import build handler for web flasher
 sys.path.insert(0, str(Path(__file__).parent.parent / "flasher"))
@@ -21,6 +22,7 @@ from build_handler import start_build, get_build_status
 
 HERE = Path(__file__).parent
 app = Flask(__name__)
+CORS(app)  # Allow Nuxt dev server (localhost:3000) to call API
 
 # ── Real weather data (via NWS API, no key needed) ──
 
@@ -441,6 +443,46 @@ def list_url_pages():
     """List all configured URL pages."""
     pages = list_pages()
     return {"pages": pages, "count": len(pages)}
+
+
+# ── URL Page CRUD ──
+
+@app.route("/page/<name>", methods=["POST"])
+def api_create_page(name):
+    """Create a new URL page."""
+    config = request.get_json(force=True)
+    if not config:
+        return {"error": "Request body required"}, 400
+    if create_page(name, config):
+        return {"status": "ok", "name": name}
+    return {"error": f"Page '{name}' already exists"}, 409
+
+
+@app.route("/page/<name>", methods=["PUT"])
+def api_update_page(name):
+    """Update an existing URL page."""
+    config = request.get_json(force=True)
+    if not config:
+        return {"error": "Request body required"}, 400
+    if update_page(name, config):
+        return {"status": "ok", "name": name}
+    return {"error": f"Page '{name}' not found"}, 404
+
+
+@app.route("/page/<name>", methods=["DELETE"])
+def api_delete_page(name):
+    """Delete a URL page."""
+    if delete_page(name):
+        return {"status": "ok"}
+    return {"error": f"Page '{name}' not found"}, 404
+
+
+@app.route("/page/<name>/refresh", methods=["POST"])
+def api_rerender_page(name):
+    """Force re-render of a URL page."""
+    if rerender_page(name):
+        return {"status": "ok"}
+    return {"error": f"Page '{name}' not found"}, 404
 
 
 # ── Web Flasher UI ──
