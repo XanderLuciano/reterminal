@@ -16,14 +16,14 @@ const form = ref({
 const formErrors = ref<Record<string, string>>({})
 
 const columns = [
-  { key: 'id', label: 'ID', sortable: true },
-  { key: 'name', label: 'Name', sortable: true },
-  { key: 'variant', label: 'Variant' },
-  { key: 'batteryPct', label: 'Battery' },
-  { key: 'chargeState', label: 'Charge' },
-  { key: 'screenCount', label: 'Screens' },
-  { key: 'lastSeen', label: 'Last Seen' },
-  { key: 'actions', label: '' }
+  { accessorKey: 'id', header: 'ID', enableSorting: true },
+  { accessorKey: 'name', header: 'Name', enableSorting: true },
+  { accessorKey: 'variant', header: 'Variant' },
+  { accessorKey: 'batteryPct', header: 'Battery' },
+  { accessorKey: 'chargeState', header: 'Charge' },
+  { accessorKey: 'screenCount', header: 'Screens' },
+  { accessorKey: 'lastSeen', header: 'Last Seen' },
+  { accessorKey: 'actions', header: '' }
 ]
 
 async function fetchDevices() {

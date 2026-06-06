@@ -17,10 +17,10 @@ const formErrors = ref<Record<string, string>>({})
 const typeOptions = ['url', 'html', 'weather', 'maintenance']
 
 const columns = [
-  { key: 'name', label: 'Name', sortable: true },
-  { key: 'type', label: 'Type' },
-  { key: 'updatedAt', label: 'Updated' },
-  { key: 'actions', label: '' }
+  { accessorKey: 'name', header: 'Name', enableSorting: true },
+  { accessorKey: 'type', header: 'Type' },
+  { accessorKey: 'updatedAt', header: 'Updated' },
+  { accessorKey: 'actions', header: '' }
 ]
 
 async function fetchScreens() {
