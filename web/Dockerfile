@@ -1,15 +1,19 @@
-# Production image - uses pre-built .output directory
-# Build locally with: npm run build
-# Then build image with: docker build -t my-app .
-FROM node:20-alpine
+# Production Dockerfile for Nuxt 4 app
+FROM node:22-slim AS base
+
 WORKDIR /app
 
-COPY .output .output
+# Install Python for Flask server
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3 python3-pip python3-venv curl \
+    && rm -rf /var/lib/apt/lists/*
 
-ENV HOST=0.0.0.0
-ENV PORT=3000
-ENV NODE_ENV=production
+# Nuxt output
+COPY .output/ .output/
+
+# Create data directory for SQLite
+RUN mkdir -p .data
 
 EXPOSE 3000
 
-CMD ["node", ".output/server/index.mjs"]
+CMD ["sh", "-c", "node .output/server/index.mjs"]
