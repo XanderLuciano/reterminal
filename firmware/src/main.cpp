@@ -81,7 +81,24 @@ RTC_DATA_ATTR uint32_t rtc_sleep_cycles = 0;
 RTC_DATA_ATTR bool rtc_first_boot = true;
 RTC_DATA_ATTR int rtc_active_page = 0;
 RTC_DATA_ATTR char rtc_etags[3][64] = {{""}, {""}, {""}};
+RTC_DATA_ATTR char rtc_device_id[17] = {0};  // 16 hex chars + null
 volatile bool bleTriggered = false;
+
+// ── Device Identity ──
+
+void ensureDeviceId() {
+  if (rtc_device_id[0] != 0) return;  // already generated
+
+  // Generate from MAC + chip ID (deterministic, survives reflash)
+  uint64_t mac = ESP.getEfuseMac();
+  uint32_t chipId = 0;
+  for (int i = 0; i < 17; i = i + 8) chipId ^= *(uint32_t*)(0x3FF00050 + i);
+
+  // Mix into 8 hex chars
+  snprintf(rtc_device_id, sizeof(rtc_device_id), "%04X%04X",
+           (uint32_t)(mac & 0xFFFF) ^ (chipId & 0xFFFF),
+           (uint32_t)(mac >> 32) ^ (chipId >> 16));
+}
 
 class TriggerCallbacks : public NimBLECharacteristicCallbacks {
   void onWrite(NimBLECharacteristic* pChar, NimBLEConnInfo& connInfo) override {
@@ -203,8 +220,8 @@ int fetchPage(int page, int batteryPct) {
   if (!framebuf) return -1;
 
   char url[256];
-  snprintf(url, sizeof(url), "%s?template=%s&battery=%d",
-           DASHBOARD_BASE_URL, TEMPLATE_NAMES[page], batteryPct);
+  snprintf(url, sizeof(url), "%s?device=%s&page=%d&battery=%d",
+           DASHBOARD_BASE_URL, rtc_device_id, page, batteryPct);
 
   HTTPClient http; http.begin(url); http.setTimeout(30000);
 
@@ -468,6 +485,7 @@ void enterUSBAwareSleep() {
 
 void setup() {
   Serial0.begin(115200); delay(100);
+  ensureDeviceId();  // generate persistent unique ID on first boot
 
   // Init charger I2C and check charging status for LED indicator
   Wire1.begin(CHARGER_I2C_SDA, CHARGER_I2C_SCL);

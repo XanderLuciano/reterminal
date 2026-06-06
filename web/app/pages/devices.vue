@@ -115,7 +115,16 @@ async function deleteDevice(id: string, name: string) {
   }
 }
 
-onMounted(() => fetchDevices())
+onMounted(() => {
+  fetchDevices()
+  // Auto-open register form if ?register=DEVICE_ID in URL
+  const route = useRoute()
+  const regId = route.query.register as string
+  if (regId) {
+    form.value = { id: regId, name: '', variant: 'e1001' }
+    showRegister.value = true
+  }
+})
 </script>
 
 <template>

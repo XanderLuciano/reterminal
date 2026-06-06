@@ -331,15 +331,109 @@ def dashboard_bin():
 def dashboard_bw_bin():
     """Raw bit-packed binary for E1001 monochrome (BW) framebuffer.
     
-    1-bit per pixel, 8 pixels per byte, MSB first.
-    Same 800×480 resolution, just BW instead of 6-color.
+    Supports device-aware rendering:
+    - ?device=ABC123&page=0 → look up device's assigned screens
+    - ?template=newspaper → legacy (backward compatible)
+    Unregistered devices get a "register me" page with QR code.
     """
-    template = request.args.get("template", "newspaper")
+    from device_db import get_device, get_device_screens, register_device
+
+    device_id = request.args.get("device", "")
+    page_n = request.args.get("page", "0")
+    template = request.args.get("template", "")
     battery_info = _format_battery(request.args.get("battery", "—"))
-    fname = f"{template}.html"
-    context = get_mock_context(fname, battery_info["label"])
+
+    # Legacy mode: template= param (backward compatible)
+    if not device_id and template:
+        fname = f"{template}.html"
+        context = get_mock_context(fname, battery_info["label"])
+        context["battery_info"] = battery_info
+        raw = render_dashboard_raw_bw(fname, context)
+        return _etag_response(raw, "application/octet-stream")
+
+    # Device-aware mode: look up in DB
+    if device_id:
+        device = get_device(device_id)
+
+        # Auto-adopt: register unknown device on first fetch
+        if not device:
+            variant = request.args.get("variant", "e1001")
+            device = register_device(device_id, variant)
+
+        if not device:
+            # DB not available — fall back to default page
+            fname = "newspaper.html"
+            context = get_mock_context("newspaper.html", battery_info["label"])
+            context["battery_info"] = battery_info
+            raw = render_dashboard_raw_bw(fname, context)
+            return _etag_response(raw, "application/octet-stream")
+
+        # Get assigned screens for this device
+        screens = get_device_screens(device_id)
+
+        if not screens:
+            # Device registered but no screens assigned — show registration info
+            return _render_register_page(device_id)
+
+        # Serve the assigned screen at page index (wraps around)
+        try:
+            n = int(page_n) % len(screens)
+        except ValueError:
+            n = 0
+        screen = screens[n]
+        config = json.loads(screen["screen_config"])
+
+        # Render based on screen type
+        if screen["screen_type"] == "weather":
+            ctx = get_weather_context(battery_info["label"])
+            ctx["battery_info"] = battery_info
+            raw = render_dashboard_raw_bw("weather.html", ctx)
+        elif screen["screen_type"] == "maintenance":
+            ctx = get_maintenance_context(battery_info["label"])
+            ctx["battery_info"] = battery_info
+            raw = render_dashboard_raw_bw("maintenance.html", ctx)
+        elif screen["screen_type"] == "url":
+            # URL screenshots rendered by url_renderer
+            from url_renderer import get_page_binary
+            data = get_page_binary(screen["screen_name"], "bw")
+            if data:
+                return _etag_response(data, "application/octet-stream")
+            raw = render_dashboard_raw_bw("newspaper.html", get_mock_context("newspaper.html", battery_info["label"]))
+        else:
+            # Default newspaper
+            ctx = get_mock_context("newspaper.html", battery_info["label"])
+            ctx["battery_info"] = battery_info
+            raw = render_dashboard_raw_bw("newspaper.html", ctx)
+
+        return _etag_response(raw, "application/octet-stream")
+
+    # No device, no template — default to newspaper
+    context = get_mock_context("newspaper.html", battery_info["label"])
     context["battery_info"] = battery_info
-    raw = render_dashboard_raw_bw(fname, context)
+    raw = render_dashboard_raw_bw("newspaper.html", context)
+    return _etag_response(raw, "application/octet-stream")
+
+
+def _render_register_page(device_id: str) -> Response:
+    """Render a registration instruction page with QR code."""
+    import qrcode, io as io_mod, base64
+
+    register_url = f"http://YOUR_SERVER_IP:3000/devices?register={device_id}"
+
+    qr = qrcode.QRCode(box_size=4, border=2)
+    qr.add_data(register_url)
+    qr.make(fit=True)
+    img = qr.make_image(fill_color="black", back_color="white")
+    buf = io_mod.BytesIO()
+    img.save(buf, format="PNG")
+    qr_b64 = base64.b64encode(buf.getvalue()).decode()
+
+    from renderer import render_dashboard_raw_bw
+    raw = render_dashboard_raw_bw("register.html", {
+        "device_id": device_id,
+        "register_url": register_url,
+        "qr_b64": qr_b64,
+    })
     return _etag_response(raw, "application/octet-stream")
 
 
