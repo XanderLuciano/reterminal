@@ -2,33 +2,30 @@
 #
 # Quick start:
 #   docker compose up -d
-#   → http://localhost:8088  (dashboard)
-#   → http://localhost:8088/flasher  (web flasher UI)
+#   → http://localhost:3000  (Nuxt web UI — flasher, devices, screens)
+#   → http://localhost:8088  (Flask API — dashboard rendering, builds)
 #
 # The web flasher uses Web Serial API — connect your ESP32-S3 via USB,
 # then open the flasher page in a browser that supports Web Serial (Chrome/Edge).
 # USB passthrough to the container is NOT needed — the browser handles it.
 
 services:
-  epaper-server:
+  epaper:
     build: .
-    container_name: reterminal-server
+    container_name: reterminal
     restart: unless-stopped
     ports:
-      - "8088:8088"
+      - "8088:8088"   # Flask — dashboard rendering, builds, page API
+      - "3000:3000"   # Nuxt — web UI, devices/screens management API
     volumes:
-      # Mount the server directory for live config/hot-reload (optional)
       - ./server:/app/server
       - ./flasher:/app/flasher
-      # Persist build artifacts across restarts
       - ./flasher/builds:/app/flasher/builds
-      # Persist URL page screenshots and caches
       - ./server/url_pages_data:/app/server/url_pages_data
-      # Persist weather cache
       - ./server/weather_cache.json:/app/server/weather_cache.json
+      - epaper-data:/app/web/.data   # SQLite persistence
     environment:
       - FLASK_ENV=production
-      # Uncomment to change the port:
-      # - EPAPER_PORT=8088
-    # Network mode is default (bridge) — Web Serial works client-side
-    # No device passthrough or privileged mode needed
+
+volumes:
+  epaper-data:

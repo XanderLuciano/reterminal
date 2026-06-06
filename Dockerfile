@@ -1,66 +1,66 @@
-# reTerminal ePaper Dashboard Server
-#
-# Multi-stage: Python deps first, then Playwright browser, then app.
-# The web flasher UI is served as static files — flashing happens
-# client-side in the browser via Web Serial API (no USB passthrough needed).
+# reTerminal ePaper Dashboard — Dockerfile
+# Multi-stage: Python (Flask) + Node (Nuxt 4) in one container.
+# Flask serves dashboard rendering & builds on :8088.
+# Nuxt Nitro serves web UI + devices/screens API on :3000.
 
-FROM python:3.11-slim AS base
-
+# ── Stage 1: Python base ──
+FROM python:3.11-slim AS python-base
 WORKDIR /app
-
-# System deps for Playwright + BLE
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl \
-    wget \
-    gnupg \
-    libxshmfence-dev \
-    libnss3 \
-    libnspr4 \
-    libatk1.0-0 \
-    libatk-bridge2.0-0 \
-    libcups2 \
-    libdrm2 \
-    libdbus-1-3 \
-    libxkbcommon0 \
-    libxcomposite1 \
-    libxdamage1 \
-    libxrandr2 \
-    libgbm1 \
-    libpango-1.0-0 \
-    libcairo2 \
-    libasound2 \
-    libatspi2.0-0 \
+    curl wget gnupg \
+    libxshmfence-dev libnss3 libnspr4 libatk1.0-0 libatk-bridge2.0-0 \
+    libcups2 libdrm2 libdbus-1-3 libxkbcommon0 libxcomposite1 \
+    libxdamage1 libxrandr2 libgbm1 libpango-1.0-0 libcairo2 \
+    libasound2 libatspi2.0-0 \
     && rm -rf /var/lib/apt/lists/*
-
-# Python dependencies
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
+RUN playwright install chromium && playwright install-deps chromium 2>/dev/null || true
+RUN pip install --no-cache-dir platformio==6.1.19 esptool==5.2.0 \
+    && pio platform install "espressif32" 2>/dev/null || true
 
-# Install Playwright Chromium
-RUN playwright install chromium && \
-    playwright install-deps chromium 2>/dev/null || true
+# ── Stage 2: Nuxt build ──
+FROM node:22-slim AS nuxt-build
+WORKDIR /app/web
+COPY web/package.json web/package-lock.json ./
+RUN npm ci
+COPY web/ ./
+RUN NODE_ENV=production npm run build
 
-# ── Runtime stage ──
-
-FROM base AS runtime
-
+# ── Stage 3: Runtime ──
+FROM python-base AS runtime
 WORKDIR /app
 
-COPY . .
+# Install Node.js for Nuxt Nitro server
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    nodejs npm \
+    && rm -rf /var/lib/apt/lists/*
 
-# The firmware source isn't needed at runtime, but keep flasher/build_handler.py
-# which imports from it. The /api/build endpoint runs PlatformIO builds.
-# If you're not using the web flasher, you can skip the PlatformIO install below.
+# Copy Python app
+COPY server/ ./server/
+COPY flasher/ ./flasher/
 
-# PlatformIO + esptool (needed for web flasher builds)
-# platformio + esptool versions pinned; platform installs @ latest.
-# The platform version varies across machines (registry vs CI build number).
-# What matters for determinism: framework version, library versions, and
-# build flags — all of which are pinned below or in platformio.ini.
-RUN pip install --no-cache-dir platformio==6.1.19 esptool==5.2.0 && \
-    pio platform install "espressif32" 2>/dev/null || true
+# Copy Nuxt built output (already built in stage 2)
+COPY --from=nuxt-build /app/web/.output/ ./web/.output/
+COPY --from=nuxt-build /app/web/package.json ./web/
 
-EXPOSE 8088
+# Create data directory for SQLite
+RUN mkdir -p web/.data
 
-# Default: run the dashboard server. Override CMD if needed.
-CMD ["python3", "server/server.py"]
+EXPOSE 8088 3000
+
+# Startup script: Flask on :8088, Nuxt on :3000
+COPY <<EOF /app/start.sh
+#!/bin/sh
+set -e
+mkdir -p /app/web/.data
+echo "[start] Flask → :8088"
+python3 server/server.py &
+sleep 2
+echo "[start] Nuxt  → :3000"
+cd /app/web && exec node .output/server/index.mjs
+EOF
+
+RUN chmod +x /app/start.sh
+
+CMD ["/app/start.sh"]

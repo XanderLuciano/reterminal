@@ -15,7 +15,9 @@ export default defineNuxtConfig({
 
   runtimeConfig: {
     public: {
-      apiBase: process.env.API_BASE || 'http://localhost:8088'
+      // Dev: http://localhost:8088 (Flask on separate port)
+      // Production behind reverse proxy: empty string (same-origin)
+      apiBase: process.env.API_BASE || (process.env.NODE_ENV === 'production' ? '' : 'http://localhost:8088')
     }
   },
 
