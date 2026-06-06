@@ -31,10 +31,11 @@ RUN NODE_ENV=production npm run build
 FROM python-base AS runtime
 WORKDIR /app
 
-# Install Node.js for Nuxt Nitro server
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    nodejs npm \
-    && rm -rf /var/lib/apt/lists/*
+# Install Node.js 22 for Nuxt Nitro server (must match build stage)
+RUN apt-get update && apt-get install -y --no-install-recommends curl && \
+    curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && \
+    apt-get install -y --no-install-recommends nodejs && \
+    rm -rf /var/lib/apt/lists/*
 
 # Copy Python app
 COPY server/ ./server/
