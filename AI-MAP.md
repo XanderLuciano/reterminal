@@ -3,6 +3,7 @@
 > **For AI agents working in this codebase.**  
 > **New to this project?** Start with [`QUICKSTART.md`](QUICKSTART.md) — step-by-step from clone to working display.  
 > Human-readable docs: `README.md`, `HARDWARE.md`  
+> Web app docs: `web/.ai/OVERVIEW.md`, `web/.ai/API.md`, `web/.ai/AGENT-WORKFLOW.md`  
 > This file: routing, structure, gotchas, and agent-specific operational knowledge.
 
 ---
@@ -16,23 +17,36 @@ dev/projects/epaper-display/
 │   ├── src/main.cpp           # Shared firmware, #ifdef E1001_VARIANT / E1002_VARIANT
 │   ├── src/wifi_config.h      # REAL creds (gitignored) — copy from .example
 │   ├── src/wifi_config.h.example  # Template with placeholders
-│   └── .pio/libdeps/.../GxEPD2/  # PATCHED library (see GxEPD2 Patches)
-├── server/                    # NUC Flask server (renders dashboards)
-│   ├── server.py              # Flask app — mock data, routes, trigger endpoints
-│   ├── renderer.py            # HTML→PNG→dither→pack (Spectra 6 + BW pipelines)
+│   └── embedded_screens.h     # Auto-generated splash + error bitmaps
+├── server/                    # Flask server (renders dashboards, builds, BLE)
+│   ├── server.py              # Routes, mock data, ETag caching, page CRUD
+│   ├── renderer.py            # HTML→PNG→dither→pack_bits/pack_nibbles
 │   ├── weather_provider.py    # NWS + Open-Meteo APIs (free, no keys)
-│   ├── ble_trigger.py         # BLE client — per-device UUID config, multi-target
-│   └── templates/             # Jinja2 HTML templates at 800×480 (shared)
-│       ├── newspaper.html     # Page 1: The Daily Glitch
-│       ├── weather.html       # Page 2: Weather dashboard
-│       ├── maintenance.html   # Page 3: Home maintenance tracker
-│       └── dashboard.html     # Card-style (legacy)
-├── e1002-hello.yaml           # ESPHome attempt (compiles, display untested)
-├── pio-test/                  # Original hello-world (legacy, gitignored)
-├── QUICKSTART.md              # Step-by-step setup guide (entry point)
-├── README.md                  # Full human documentation
-├── HARDWARE.md                # Complete IO pin reference
-└── AI-MAP.md                  # This file
+│   ├── url_renderer.py        # URL screenshot engine + refresh loop
+│   ├── url_pages.json         # URL page configs
+│   └── templates/             # Jinja2 HTML at 800×480
+├── web/                       # Nuxt 4 web dashboard + management UI
+│   ├── app/                   # Vue 3 pages, DB schema, types
+│   │   ├── app.vue            # Sidebar layout, nav items
+│   │   ├── pages/             # index, flasher, pages, devices, screens, device-screens
+│   │   ├── server/db/         # Drizzle ORM schema + SQLite init
+│   │   └── types/             # TypeScript interfaces
+│   ├── server/                # Nitro server (Nuxt API routes + proxy)
+│   │   ├── api/               # devices, screens, device/:id/page
+│   │   ├── middleware/         # Flask proxy (/:8088)
+│   │   └── plugins/           # DB init on startup
+│   ├── .ai/                   # AI-readable docs
+│   │   ├── OVERVIEW.md        # Architecture, DB design, firmware integration
+│   │   ├── API.md             # Full endpoint reference
+│   │   └── AGENT-WORKFLOW.md  # Multi-agent build workflow template
+│   └── nuxt.config.ts         # Nuxt config, runtime apiBase
+├── flasher/                   # Build handler + prebuilt firmware
+│   ├── build_handler.py       # PlatformIO build backend (called from Flask)
+│   ├── index.html             # Legacy static flasher (replaced by Nuxt)
+│   └── prebuilt/              # e1001-factory.bin, e1002-factory.bin
+├── QUICKSTART.md / README.md / HARDWARE.md / AI-MAP.md
+├── Dockerfile                 # Multi-stage: Python + Node (Flask:8088 + Nuxt:3000)
+└── docker-compose.yml         # Single container, both services
 ```
 
 ---
@@ -62,29 +76,53 @@ Pinout is identical for both devices. Same ESP32-S3 chip.
 
 | What you want to change | Where to go |
 |---|---|
-| Display content, layout, design | `server/templates/*.html` (shared between both displays) |
-| Pin mappings, IO, BMS, charger, sensor details | `HARDWARE.md` — **always update this** when you discover or change hardware info |
+| Display content, layout, design | `server/templates/*.html` (Jinja2, shared between both displays) |
+| Pin mappings, IO, BMS, charger, sensor details | `HARDWARE.md` — **always update this** |
 | Mock data, news headlines, reminders | `server/server.py` → `get_mock_context()` |
 | Weather data | `server/weather_provider.py` |
 | Color dithering (E1002) | `server/renderer.py` → `dither_spectra6()`, `pack_nibbles()` |
 | BW dithering (E1001) | `server/renderer.py` → `dither_bw()`, `pack_bits()` |
 | Button behavior, sleep timing, BLE | `firmware/src/main.cpp` (shared, #ifdef per variant) |
 | Board config, build flags | `firmware/platformio.ini` |
-| BLE trigger from NUC | `server/ble_trigger.py` → `DEVICE_CONFIG` dict |
-| URL-based pages | `server/url_pages.json` → configure, then `server/url_renderer.py` auto-handles |
-| Server routes | `server/server.py` |
+| URL-based pages (render) | `server/url_pages.json` → configure, `server/url_renderer.py` handles fetch+render |
+| Page CRUD API | `server/server.py` → POST/PUT/DELETE `/page/<name>` |
+| Server routes (Flask) | `server/server.py` |
+| Web UI pages (Nuxt) | `web/app/pages/*.vue` — flasher, devices, screens, pages, device-screens |
+| Device/screen management API | `web/server/api/` — Nitro API routes (SQLite + Drizzle) |
+| DB schema | `web/app/server/db/schema.ts` — Zod + Drizzle tables |
+| Nuxt proxy (→ Flask) | `web/server/middleware/proxy.ts` — forwards Flask paths to :8088 |
+| Web app config | `web/nuxt.config.ts` — runtimeConfig, modules |
 | WiFi credentials | `firmware/src/wifi_config.h` (local only, gitignored) |
+
+### Architecture Quick Reference
+
+```
+Browser ──→ Nuxt:3000 ──┐
+                        ├── Nitro API (devices, screens, DB)
+                        └── proxy ──→ Flask:8088 (dashboards, builds, pages)
+ESP32   ──→ Nuxt:3000 ──→ proxy ──→ Flask:8088 (dashboard-bw.bin, etc.)
+```
+
+- **Nuxt Nitro** handles: `/api/devices`, `/api/screens`, `/api/device/:id/page/:n`, web UI pages
+- **Nuxt proxy** forwards: `/dashboard*`, `/api/build*`, `/api/page*`, `/prebuilt*`, `/page*` → Flask
+- **Flask** handles: dashboard rendering, builds, weather, BLE triggers, URL page rendering
+- **ETag caching**: Flask returns MD5 ETags, Nuxt forwards `If-None-Match` headers, ESP32 saves battery
 
 ### Do NOT modify
 
 - `firmware/.pio/` — PlatformIO build cache
 - `server/__pycache__/` — Python cache
-- `pio-test/` — legacy
+- `web/node_modules/` — npm packages
+- `web/.output/` — Nuxt build output
+- `web/.data/` — SQLite database file
+- `web/.nuxt/` — Nuxt dev cache
 - `firmware/src/wifi_config.h` — local secrets file
 
 ### MUST maintain
 
-- **`HARDWARE.md`** — the canonical hardware IO reference. Any time you discover a new pin, peripheral, register, sensor address, or power detail, update this file. It's the source of truth for all hardware knowledge discovered about these devices. Do NOT let it go stale.
+- **`HARDWARE.md`** — canonical hardware IO reference
+- **`web/.ai/`** — keep API.md, OVERVIEW.md up to date when adding routes
+- **`AI-MAP.md`** — update this file when project structure changes
 
 ---
 
@@ -157,35 +195,54 @@ E1001 uses `drawBitmap()` which expects 1-bit packed data — no patch needed. `
 ## Flash & Test Commands
 
 ```bash
+# === Firmware ===
 # E1001 (monochrome)
 cd dev/projects/epaper-display/firmware
 sudo chmod 666 /dev/ttyUSB0
 pio run -e reterminal_e1001 -t upload --upload-port /dev/ttyUSB0
-
 # E1002 (color)
 pio run -e seeed_xiao_esp32s3 -t upload --upload-port /dev/ttyUSB0
-
-# Build both without flashing
+# Build both
 pio run -e reterminal_e1001 -e seeed_xiao_esp32s3
 
-# Restart server after template/code changes
+# === Flask Server ===
 pm2 restart epaper-server
+# Manual: python3 server/server.py  (port 8088)
+
+# === Nuxt Web UI ===
+pm2 restart epaper-web
+# Dev: cd web && npm run dev                (port 3000, hot reload)
+# Build: cd web && npm run build
+# Prod: cd web && node .output/server/index.mjs
+
+# === Test Endpoints ===
+# Flask direct
+curl http://localhost:8088/health
+curl -o preview.png http://localhost:8088/preview.png?template=newspaper
+curl -o test.bin http://localhost:8088/dashboard-bw.bin?template=newspaper
+# E1001: 48,000 bytes (800×480/8), E1002: 192,000 bytes (800×480/2)
+
+# Through Nuxt proxy
+curl -o test.bin http://localhost:3000/dashboard-bw.bin?template=newspaper
+curl http://localhost:3000/api/devices
+
+# ETag test
+ETAG=$(curl -sI http://localhost:3000/dashboard-bw.bin?template=newspaper | grep -i etag | cut -d' ' -f2)
+curl -sI -H "If-None-Match: $ETAG" http://localhost:3000/dashboard-bw.bin?template=newspaper
+# → HTTP/1.1 304 Not Modified
 
 # Trigger wireless refresh
 curl http://localhost:8088/trigger          # E1002
 curl http://localhost:8088/trigger-e1001    # E1001
 
-# Preview what the display will show (before dithering)
-curl -o preview.png http://localhost:8088/preview.png?template=newspaper
-curl -o bw_preview.png http://localhost:8088/dashboard-bw.png?template=newspaper
+# === PM2 ===
+pm2 logs epaper-server --lines 10
+pm2 logs epaper-web --lines 10
 
-# Test raw framebuffer
-curl -o test.bin http://localhost:8088/dashboard-bw.bin?template=newspaper
-# E1001: 48,000 bytes (800×480/8)
-# E1002: 192,000 bytes (800×480/2)
-
-# Check server logs
-pm2 logs epaper-server --lines 10 --nostream
+# === Database ===
+# SQLite at web/.data/eink.db — check with:
+npx drizzle-kit studio  # requires drizzle-kit installed globally
+sqlite3 web/.data/eink.db ".tables"
 ```
 
 ---
@@ -220,21 +277,30 @@ Same pinout for both E1001 and E1002.
 
 ---
 
-## Interaction Model (v6)
+## Interaction Model (v7)
 
 ```
-DEEP SLEEP (display persists on e-ink)
+SETUP → showSplash() → refreshAndShow(0) → enterUSBAwareSleep()
+
+enterUSBAwareSleep():
+├─ USB connected → light sleep (5s) → LED active → loop
+│   ├─ Timer (5s) → re-check charge state → update LED → light sleep
+│   ├─ Charge done → LED solid on, continue light sleep
+│   ├─ USB unplugged → LED off → drop to deep sleep
+│   └─ Button press → handle selection → refresh → check USB → sleep
+│
+└─ No USB → deep sleep (DEEP_SLEEP_SECONDS, default 60s)
     │
     ├─ Timer (60s) → BLE advertise 10s → check for trigger
-    │                 ├─ Trigger received → WiFi → fetch → refresh → sleep
-    │                 └─ No trigger → back to sleep
+    │                 ├─ Trigger → WiFi → fetch → refresh → enterUSBAwareSleep()
+    │                 └─ No trigger → enterUSBAwareSleep()
     │
-    ├─ Timer + Health (6h) → WiFi → fetch current page → refresh → sleep
+    ├─ Health (6h) → WiFi → fetch current page → refresh → enterUSBAwareSleep()
     │
     └─ Button press → WAKE → beep current page
                        ├─ Left/Right → cycle selection → beep new count
-                       ├─ Green → confirm → WiFi → fetch → refresh → sleep
-                       └─ 30s timeout → sleep (no change)
+                       ├─ Green → confirm → WiFi → fetch → refresh → enterUSBAwareSleep()
+                       └─ 30s timeout → enterUSBAwareSleep() (no change)
 ```
 
 **Beep patterns:** 1 beep = page 0, 2 = page 1, 3 = page 2, ascending triple = confirmed

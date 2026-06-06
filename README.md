@@ -7,16 +7,28 @@
 > ```
 > You're working with the reTerminal ePaper Dashboard project from github.com/XanderLuciano/reterminal.
 >
-> 1. Read QUICKSTART.md — it has step-by-step setup instructions
+> 1. Read QUICKSTART.md — step-by-step setup instructions
 > 2. Read AI-MAP.md — routing rules, gotchas, and architecture
-> 3. Read HARDWARE.md — complete pin map and peripheral reference
-> 4. The project supports two displays: E1001 (monochrome, env reterminal_e1001) and E1002 (color, env seeed_xiao_esp32s3)
-> 5. Follow the steps in order — they're designed to be mechanically executable
+> 3. Read web/.ai/OVERVIEW.md — web app architecture, DB design, API routes
+> 4. Read web/.ai/AGENT-WORKFLOW.md — reusable multi-agent build workflow
+> 5. Two displays: E1001 (monochrome, env reterminal_e1001) and E1002 (color, env seeed_xiao_esp32s3)
 >
-> My goal is: [describe what you need — set up a display, create a custom page, add a data source, etc.]
+> My goal is: [describe what you need]
 > ```
 
-Two wireless e-ink dashboards sharing one codebase. The server renders pages, pushes updates via BLE, and the displays fetch them over WiFi.
+Two wireless e-ink dashboards sharing one codebase. Flask renders pages, Nuxt 4 powers the web UI, displays fetch over WiFi.
+
+## Architecture
+
+```
+Browser → Nuxt:3000 (web UI, devices/screens API)
+              └─ proxy → Flask:8088 (dashboard rendering, builds, BLE)
+ESP32  → Nuxt:3000 (firmware fetch, device registration)
+```
+
+- **Nuxt 4 + NuxtUI** — web dashboard at `:3000` (flasher, device manager, screen builder)
+- **Flask** — dashboard rendering at `:8088` (Jinja2 → Playwright → e-ink binary)
+- **SQLite + Drizzle** — device/screen management database
 
 ## Hardware
 
@@ -24,167 +36,112 @@ Two wireless e-ink dashboards sharing one codebase. The server renders pages, pu
 |---|---|---|
 | **Display** | 7.3" Spectra 6 color | 7.5" monochrome BW |
 | **Resolution** | 800×480 | 800×480 |
-| **Colors** | 6 (black, white, yellow, red, blue, green) | 2 (black, white) |
-| **Refresh time** | 25-45 sec | ~5 sec |
+| **Colors** | 6 | 2 |
 | **MCU** | ESP32-S3, 8MB PSRAM | ESP32-S3, 8MB PSRAM |
-| **BLE name** | E1002-Dashboard | E1001-Dashboard |
 
-## Pages
+## Pages (on display)
 
-3 pages on both displays:
+- **Page 1 — The Daily Glitch** — newspaper layout
+- **Page 2 — Weather** — NWS live data
+- **Page 3 — Maintenance** — home maintenance tracker
 
-- **Page 1 — The Daily Glitch** — newspaper layout with headlines, weather snapshot, agenda
-- **Page 2 — Weather** — full dashboard with live NWS data (no API key needed)
-- **Page 3 — Maintenance** — home maintenance tracker with overdue/status indicators
+## Web UI (`http://localhost:3000`)
 
-## Buttons
-
-Select-then-confirm model. Press any button to wake → Left/Right to switch pages → Green to confirm. 30-second timeout returns to sleep. Beeps indicate current page (1 beep = page 1, 2 = page 2, 3 = page 3). E-ink keeps showing the last image with zero power.
-
-## Wireless Refresh
-
-```bash
-curl http://YOUR_SERVER_IP:8088/trigger          # E1002 (color)
-curl http://YOUR_SERVER_IP:8088/trigger-e1001    # E1001 (mono)
-```
-
-Pre-renders the dashboard and sends a BLE wake signal. Display wakes within 60 seconds, fetches over WiFi, refreshes, returns to sleep. BLE is best-effort — the 60-second timer wake is the reliable fallback.
-
-## Power
-
-| Mode | Draw | Duration |
-|---|---|---|
-| Deep sleep | ~50µA | 60s between checks |
-| BLE advertising | ~50mA | 10s window |
-| WiFi + refresh | ~500mA | ~45s burst |
-| **Battery life** | **3-4 weeks** | 2000mAh |
-
-WiFi only fires on BLE trigger, button press, or 6-hour health refresh.
+| Route | Page |
+|---|---|
+| `/` | Homepage — project overview |
+| `/flasher` | Web flasher — configure WiFi, build & flash firmware |
+| `/pages` | Page manager — URL page previews with thumbnails |
+| `/devices` | Device registry — register, view battery/status |
+| `/screens` | Screen builder — create screen configs |
+| `/device-screens` | Assign screens to devices |
 
 ## Server Endpoints
 
+### Flask (`:8088`) — dashboard rendering
 | Endpoint | Description |
 |---|---|
-| `GET /trigger` | Trigger E1002 refresh |
-| `GET /trigger-e1001` | Trigger E1001 refresh |
-| `GET /dashboard.bin?template=name` | E1002 framebuffer (192KB nibble-packed) |
-| `GET /dashboard-bw.bin?template=name` | E1001 framebuffer (48KB bit-packed) |
-| `GET /dashboard.png?template=name` | Color-dithered preview |
-| `GET /dashboard-bw.png?template=name` | BW-dithered preview |
-| `GET /preview.png?template=name` | Full-color preview (before dithering) |
-| `GET /health` | Health check |
+| `GET /dashboard.bin?template=name&battery=pct` | E1002 color framebuffer (192KB) |
+| `GET /dashboard-bw.bin?template=name&battery=pct` | E1001 BW framebuffer (48KB) |
+| `GET /trigger` / `/trigger-e1001` | BLE wake trigger |
+| `GET /page/<name>.bin` / `.png` | URL page rendering |
+| `POST/PUT/DELETE /page/<name>` | Page CRUD |
 
-Templates: `newspaper`, `weather`, `maintenance`.
+### Nuxt Nitro (`:3000`) — device/screen management
+| Endpoint | Description |
+|---|---|
+| `GET/POST /api/devices` | Device CRUD |
+| `GET/POST /api/screens` | Screen CRUD |
+| `POST /api/devices/:id/screens` | Assign screens to device |
+| `GET /api/device/:id/page/:n` | Per-device page binary |
 
-URL-based pages also supported — see [`url_pages.json`](server/url_pages.json).
+Full API reference: `web/.ai/API.md`
 
 ## Quick Setup
 
-See [`QUICKSTART.md`](QUICKSTART.md) for the full walkthrough. TL;DR:
-
-### 🐳 Docker (recommended for the server)
+### 🐳 Docker (both services in one container)
 
 ```bash
 git clone https://github.com/XanderLuciano/reterminal.git
 cd reterminal
 docker compose up -d
-# → Server running at http://localhost:8088
-# → Web flasher at http://localhost:8088/flasher
+# → Nuxt UI at http://localhost:3000
+# → Flask API at http://localhost:8088
 ```
 
-Then [flash the firmware manually](#flash-firmware) — the browser handles USB via Web Serial.
-
-### 📦 Manual server
+### 📦 Manual
 
 ```bash
+# Server
 pip install -r requirements.txt && playwright install chromium
-cp firmware/src/wifi_config.h.example firmware/src/wifi_config.h  # edit with your WiFi
-cd server && python3 server.py &
+
+# Web UI
+cd web && npm install && npm run build
+
+# Run both (or use PM2)
+python3 server/server.py &    # Flask :8088
+cd web && node .output/server/index.mjs  # Nuxt :3000
 ```
 
-### ⚡ Flash firmware (either way)
+### PM2 (production)
 
 ```bash
-cd firmware
-cp src/wifi_config.h.example src/wifi_config.h  # set your WiFi SSID/password
-# Edit src/main.cpp — change DASHBOARD_BASE_URL to your server's IP or hostname
-
-pio run -e reterminal_e1001 -t upload --upload-port /dev/ttyUSB0   # E1001
-# or: pio run -e seeed_xiao_esp32s3 -t upload --upload-port /dev/ttyUSB0  # E1002
+pm2 start ecosystem.config.js --only epaper-server,epaper-web
 ```
-
-**Or use the web flasher:** open `http://<server>:8088/flasher` in Chrome/Edge, configure WiFi/network settings in-browser, and flash over Web Serial. No PlatformIO install needed. The same page also has a **BLE trigger button** — wake your display wirelessly from the browser via Web Bluetooth.
-
-## Making It Your Own
-
-### URL Pages — point at any website
-
-Drop URLs into `server/url_pages.json` and they become pages on your display. The server screenshots them at 800×480, dithers for e-ink, and auto-refreshes on schedule.
-
-
-
-Add `"my_dashboard"` to `TEMPLATE_NAMES[]` in firmware, rebuild, flash. Endpoints:
-- `GET /page/my_dashboard.bin` — BW framebuffer (E1001)
-- `GET /page/my_dashboard_color.bin` — color framebuffer (E1002)
-
-### Edit HTML templates
-
-- **Content:** Edit `server/server.py` → `get_mock_context()` — headlines, agenda, stats
-- **Weather location:** Update coordinates in `server/weather_provider.py`
-- **Layout:** Edit HTML templates in `server/templates/` — Jinja2, 800×480
-- **Newspaper name:** Change the masthead in `server/templates/newspaper.html`
-- **New page:** Create template → add context → add to `TEMPLATE_NAMES[]` in firmware → rebuild & flash
-
-Restart the server and trigger a refresh to see changes. Full details in [`QUICKSTART.md`](QUICKSTART.md).
 
 ## Project Layout
 
 ```
-├── QUICKSTART.md              # Step-by-step setup (start here!)
-├── README.md                  # This file — overview & reference
-├── HARDWARE.md                # Complete IO pin map & peripherals
-├── AI-MAP.md                  # Agent reference (routing, gotchas, data flows)
-├── Dockerfile                 # Containerized server + web flasher
-├── docker-compose.yml         # One-command: docker compose up -d
-├── requirements.txt           # Python dependencies
-├── flasher/                   # Web flasher UI (served by Flask)
-│   ├── index.html             # Single-page config + flash UI
-│   ├── build_handler.py       # Async build backend (PlatformIO)
-│   └── builds/                # Build artifacts (gitignored)
+├── README.md / QUICKSTART.md / AI-MAP.md / HARDWARE.md
+├── Dockerfile / docker-compose.yml
+├── requirements.txt
 ├── server/                    # Flask dashboard renderer
-│   ├── server.py              # Routes, mock data
-│   ├── renderer.py            # HTML→PNG→dither→pack (color + BW)
-│   ├── weather_provider.py    # Live weather (free NWS API)
-│   ├── ble_trigger.py         # BLE push trigger
+│   ├── server.py              # Routes, ETag caching
+│   ├── renderer.py            # HTML→PNG→dither→pack_bits
+│   ├── weather_provider.py    # NWS weather (free API)
 │   └── templates/             # Jinja2 HTML (800×480)
-└── firmware/                  # ESP32-S3 (PlatformIO + Arduino)
-    ├── src/main.cpp           # Shared code, #ifdef per variant
-    ├── src/wifi_config.h.example
-    └── platformio.ini         # Two envs: reterminal_e1001, seeed_xiao_esp32s3
+├── web/                       # Nuxt 4 web dashboard
+│   ├── app/                   # Vue pages, DB schema
+│   │   ├── pages/             # flasher, devices, screens, pages
+│   │   └── server/db/         # Drizzle ORM + SQLite
+│   ├── server/                # Nitro API routes + proxy middleware
+│   │   ├── api/               # devices, screens, device/:id/page
+│   │   └── middleware/        # Flask proxy
+│   └── .ai/                   # AI-readable docs
+├── flasher/                   # Build handler + prebuilt binaries
+│   ├── build_handler.py       # PlatformIO build backend
+│   └── prebuilt/              # Factory firmware binaries
+└── firmware/                  # ESP32-S3 (PlatformIO)
+    ├── src/main.cpp
+    └── platformio.ini
 ```
-
-## Docker Notes
-
-- **Web Serial + Web Bluetooth work from browser** — the container only serves the UI. Flashing and BLE triggers happen client-side. No `--network=host`, no device passthrough, no privileged mode needed.
-- **PlatformIO runs inside the container** for builds — no local toolchain needed
-- **BLE triggers from the browser** via the flasher page — no Python/BLE dependency on the server at all
-- Rebuild after config changes: `docker compose up -d --build`
-- To customize, volume-mount config files or edit them on the host and restart the container
-
-## Troubleshooting
-
-| Symptom | Fix |
-|---|---|
-| Display won't wake | Check power switch on back |
-| BLE trigger not working | Wait for next 60s timer wake, or press a button |
-| Garbled display | BW display getting color data or vice versa — check build target |
-| Buttons don't respond | Press and hold for 1 second, then release |
-| Server errors | `docker compose logs -f` |
 
 ## Key Facts
 
-- Separate BLE UUIDs per device — triggers never cross-fire
+- Flask + Nuxt in one Docker container (multi-stage build)
+- Nuxt proxies Flask API calls — zero Ansible changes for existing deploy
+- ETag caching on dashboard binaries (304 Not Modified when unchanged)
 - Image persists with zero power (e-ink)
 - Auto-refresh every 6 hours prevents ghosting
-- E1002 color refresh is SLOW (25-45s), E1001 BW is fast (~5s)
-- Default mock data is generic and demo-friendly
+- E1002 color refresh: 25-45s. E1001 BW: ~5s
+- Battery life: 3-4 weeks (2000mAh)
