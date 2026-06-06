@@ -124,7 +124,7 @@ onMounted(async () => {
 </script>
 
 <template>
-  <UDashboardPanelContent class="p-6">
+  <div class="p-6">
     <div class="flex items-center justify-between mb-6">
       <div>
         <h1 class="text-2xl font-bold">Device Screens</h1>
@@ -169,14 +169,14 @@ onMounted(async () => {
             <div class="flex flex-col gap-1">
               <UButton
                 icon="i-lucide-chevron-up"
-                size="2xs"
+                size="xs"
                 variant="ghost"
                 :disabled="i === 0"
                 @click="moveRow(i, -1)"
               />
               <UButton
                 icon="i-lucide-chevron-down"
-                size="2xs"
+                size="xs"
                 variant="ghost"
                 :disabled="i === assignmentRows.length - 1"
                 @click="moveRow(i, 1)"
@@ -229,5 +229,5 @@ onMounted(async () => {
         </div>
       </UCard>
     </template>
-  </UDashboardPanelContent>
+  </div>
 </template>

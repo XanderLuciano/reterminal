@@ -119,7 +119,7 @@ onMounted(() => fetchDevices())
 </script>
 
 <template>
-  <UDashboardPanelContent class="p-6">
+  <div class="p-6">
     <div class="flex items-center justify-between mb-6">
       <div>
         <h1 class="text-2xl font-bold">Devices</h1>
@@ -130,11 +130,17 @@ onMounted(() => fetchDevices())
 
     <UCard>
       <UTable
-        :rows="devices"
+        :data="devices"
         :columns="columns"
         :loading="loading"
-        :empty-state="{ icon: 'i-lucide-tablet', label: 'No devices registered' }"
+        empty="No devices registered"
       >
+        <template #empty>
+          <div class="text-center py-8 text-muted">
+            <UIcon name="i-lucide-tablet" class="text-3xl mb-2" />
+            <p>No devices registered</p>
+          </div>
+        </template>
         <template #batteryPct-data="{ row }">
           <UBadge :color="(row.batteryPct ?? 0) > 20 ? 'primary' : 'error'" variant="subtle">
             {{ formatBattery(row.batteryPct) }}
@@ -200,7 +206,7 @@ onMounted(() => fetchDevices())
             <div><span class="text-muted">Firmware:</span> {{ selectedDevice.firmwareVersion || '—' }}</div>
             <div><span class="text-muted">Last Seen:</span> {{ formatLastSeen(selectedDevice.lastSeen) }}</div>
           </div>
-          <UDivider v-if="selectedDevice.assignedScreens?.length" />
+          <USeparator v-if="selectedDevice.assignedScreens?.length" />
           <div v-if="selectedDevice.assignedScreens?.length">
             <p class="text-sm font-medium mb-2">Assigned Screens ({{ selectedDevice.assignedScreens.length }})</p>
             <div class="space-y-2">
@@ -222,5 +228,5 @@ onMounted(() => fetchDevices())
         </div>
       </template>
     </UModal>
-  </UDashboardPanelContent>
+  </div>
 </template>

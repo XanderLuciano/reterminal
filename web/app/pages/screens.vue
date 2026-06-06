@@ -118,7 +118,7 @@ onMounted(() => fetchScreens())
 </script>
 
 <template>
-  <UDashboardPanelContent class="p-6">
+  <div class="p-6">
     <div class="flex items-center justify-between mb-6">
       <div>
         <h1 class="text-2xl font-bold">Screens</h1>
@@ -129,10 +129,17 @@ onMounted(() => fetchScreens())
 
     <UCard>
       <UTable
-        :rows="screenList"
+        :data="screenList"
         :columns="columns"
         :loading="loading"
-        :empty-state="{ icon: 'i-lucide-monitor', label: 'No screens created' }"
+        empty="No screens created"
+      >
+        <template #empty>
+          <div class="text-center py-8 text-muted">
+            <UIcon name="i-lucide-monitor" class="text-3xl mb-2" />
+            <p>No screens created</p>
+          </div>
+        </template>
       >
         <template #type-data="{ row }">
           <UBadge :color="getTypeBadge(row.type)" variant="subtle" size="sm">
@@ -188,5 +195,5 @@ onMounted(() => fetchScreens())
         <UButton @click="saveScreen">{{ editingId ? 'Update' : 'Create' }}</UButton>
       </template>
     </UModal>
-  </UDashboardPanelContent>
+  </div>
 </template>

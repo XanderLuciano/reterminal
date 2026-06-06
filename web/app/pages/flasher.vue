@@ -264,7 +264,6 @@ onUnmounted(() => {
                   color="neutral"
                   variant="link"
                   :icon="showPassword ? 'i-lucide-eye-off' : 'i-lucide-eye'"
-                  :padded="false"
                   @click="showPassword = !showPassword"
                 />
               </template>
