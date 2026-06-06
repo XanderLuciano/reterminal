@@ -109,6 +109,36 @@ cd web && node .output/server/index.mjs  # Nuxt :3000
 pm2 start ecosystem.config.js --only epaper-server,epaper-web
 ```
 
+## First-Time Setup (after flashing)
+
+1. **Flash the display** — use the [web flasher](http://localhost:3000/flasher) or PlatformIO CLI
+2. **Display boots** → shows splash screen → fetches first page
+3. **Auto-registration** — the display sends its unique ID (generated from hardware MAC + chip ID). The server auto-registers it with a default name.
+4. **If no screens assigned** → the display shows a registration page with its device ID and a QR code:
+
+```
+┌─────────────────────────────────────────┬──────────┐
+│  Device Not Registered                  │  ██▄▄██  │
+│  Your display needs to be registered    │  ██████  │
+│  before it can show custom screens.     │  ██▄▄██  │
+│                                         │          │
+│  ┌──────────────────────┐              │  QR code │
+│  │      A1B2C3D4        │              │  → scan  │
+│  └──────────────────────┘              │  to reg  │
+│                                         │          │
+│  1. Go to http://server:3000/devices   │          │
+│  2. Enter the device ID shown above     │          │
+│  3. Assign screens to this display      │          │
+└─────────────────────────────────────────┴──────────┘
+```
+
+5. **Scan the QR code** → opens `/devices?register=A1B2C3D4` with the ID pre-filled
+6. **Register** → give it a friendly name (e.g. "Living Room")
+7. **Assign screens** → go to `/device-screens`, pick the device, choose which screens to show
+8. **Next refresh** → the display fetches its assigned screens automatically
+
+> 💡 **Auto-adopt:** If you don't assign screens, the display shows the registration page on every refresh — a constant reminder to set it up. Once screens are assigned, they cycle through automatically.
+
 ## Project Layout
 
 ```
