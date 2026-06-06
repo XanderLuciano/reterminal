@@ -30,6 +30,16 @@ ESP32  → Nuxt:3000 (firmware fetch, device registration)
 - **Flask** — dashboard rendering at `:8088` (Jinja2 → Playwright → e-ink binary)
 - **SQLite + Drizzle** — device/screen management database
 
+## Screenshots
+
+| Home | Flasher |
+|------|---------|
+| ![Homepage](docs/screenshots/homepage.png) | ![Flasher](docs/screenshots/flasher.png) |
+
+| Devices | Register Page (e-ink) |
+|---------|----------------------|
+| ![Devices](docs/screenshots/devices.png) | ![Register](docs/screenshots/register.png) |
+
 ## Hardware
 
 | | E1002 | E1001 |
