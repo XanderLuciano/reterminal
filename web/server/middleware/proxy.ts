@@ -8,7 +8,8 @@ export default defineEventHandler(async (event) => {
   const FLASK_PREFIXES = [
     '/api/build', '/api/prebuilt', '/api/health', '/api/trigger', '/api/trigger-e1001',
     '/api/page', '/api/pages', '/prebuilt', '/dashboard', '/preview.png',
-    '/health', '/page', '/pages', '/trigger', '/trigger-e1001', '/demo'
+    '/health', '/page', '/pages', '/trigger', '/trigger-e1001', '/demo',
+    '/dashboard-bw.bin', '/dashboard.bin'
   ]
 
   if (!FLASK_PREFIXES.some(p => path.startsWith(p))) return
