@@ -532,18 +532,22 @@ def _render_debug_error(info: dict, variant: str = "e1001") -> bytes:
 
 def _render_register_page(device_id: str, variant: str = "e1001") -> Response:
     """Render a registration instruction page with QR code."""
-    import qrcode, io as io_mod, base64
+    try:
+        import qrcode, io as io_mod, base64
 
-    host = request.host
-    register_url = f"http://{host}/devices?register={device_id}"
+        host = request.host
+        register_url = f"http://{host}/devices?register={device_id}"
 
-    qr = qrcode.QRCode(box_size=4, border=2)
-    qr.add_data(register_url)
-    qr.make(fit=True)
-    img = qr.make_image(fill_color="black", back_color="white")
-    buf = io_mod.BytesIO()
-    img.save(buf, format="PNG")
-    qr_b64 = base64.b64encode(buf.getvalue()).decode()
+        qr = qrcode.QRCode(box_size=4, border=2)
+        qr.add_data(register_url)
+        qr.make(fit=True)
+        img = qr.make_image(fill_color="black", back_color="white")
+        buf = io_mod.BytesIO()
+        img.save(buf, format="PNG")
+        qr_b64 = base64.b64encode(buf.getvalue()).decode()
+    except ImportError:
+        qr_b64 = ""  # qrcode not installed — skip QR
+        register_url = f"http://{host}/devices?register={device_id}"
 
     from renderer import render_dashboard_raw, render_dashboard_raw_bw
     ctx = {
