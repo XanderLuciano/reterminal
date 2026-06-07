@@ -128,8 +128,18 @@ onMounted(() => {
   const route = useRoute()
   const regId = route.query.register as string
   if (regId) {
-    form.value = { id: regId, name: 'Unnamed', variant: 'e1001' }
+    form.value = { id: regId, name: '', variant: 'e1001' }
     showRegister.value = true
+    // Check if already registered (auto-adopt from Flask may have created it)
+    fetch(`/api/devices/${regId}`)
+      .then(r => r.json())
+      .then(d => {
+        if (d.id) {
+          const name = d.name || 'unnamed'
+          toast.add({ title: 'Already Registered', description: `Device '${name}' (${regId}) already exists. Visit Devices to assign screens.`, color: 'info' })
+        }
+      })
+      .catch(() => { /* not registered yet, that's fine */ })
   }
 })
 </script>

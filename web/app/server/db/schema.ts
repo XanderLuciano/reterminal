@@ -37,7 +37,7 @@ export const deviceScreens = sqliteTable('device_screens', {
 // ── Zod validation schemas ──
 export const deviceSchema = z.object({
   id: z.string().min(1).max(64),
-  name: z.string().min(1).max(64).optional(),
+  name: z.string().max(64).optional(),
   variant: z.enum(['e1001', 'e1002']),
   firmwareVersion: z.string().optional(),
   batteryPct: z.number().int().min(-2).max(100).optional(),
