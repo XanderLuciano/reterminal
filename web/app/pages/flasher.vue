@@ -658,7 +658,7 @@ onUnmounted(() => {
         :disabled="!wifiSsid || !wifiPass || !dashboardUrl"
         @click="startBuild"
       >
-        {{ building ? 'Building...' : 'Build & Download' }}
+        {{ building ? 'Building...' : 'Build' }}
       </UButton>
 
       <div v-if="buildStatus" class="mt-4">
