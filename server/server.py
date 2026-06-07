@@ -338,58 +338,67 @@ def dashboard_bin():
 
     # Device-aware mode: look up in DB
     if device_id:
-        device = get_device(device_id)
+        try:
+            device = get_device(device_id)
 
-        # Auto-adopt: register unknown device on first fetch
-        if not device:
-            device = register_device(device_id, "e1002")
+            # Auto-adopt: register unknown device on first fetch
+            if not device:
+                device = register_device(device_id, "e1002")
 
-        if not device:
-            # DB not available — fall back to default page
+            if not device:
+                # DB not available — fall back to default page
+                fname = "newspaper.html"
+                context = get_mock_context("newspaper.html", battery_info["label"])
+                context["battery_info"] = battery_info
+                raw = render_dashboard_raw(fname, context)
+                return _etag_response(raw, "application/octet-stream")
+
+            # Get assigned screens for this device
+            screens = get_device_screens(device_id)
+
+            if not screens:
+                # Device registered but no screens assigned — show registration info
+                return _render_register_page(device_id, "e1002")
+
+            # Serve the assigned screen at page index (wraps around)
+            try:
+                n = int(page_n) % len(screens)
+            except ValueError:
+                n = 0
+            screen = screens[n]
+            config = json.loads(screen["screen_config"])
+
+            # Render based on screen type
+            if screen["screen_type"] == "weather":
+                ctx = get_weather_context(battery_info["label"])
+                ctx["battery_info"] = battery_info
+                raw = render_dashboard_raw("weather.html", ctx)
+            elif screen["screen_type"] == "maintenance":
+                ctx = get_maintenance_context(battery_info["label"])
+                ctx["battery_info"] = battery_info
+                raw = render_dashboard_raw("maintenance.html", ctx)
+            elif screen["screen_type"] == "url":
+                # URL screenshots rendered by url_renderer
+                from url_renderer import get_page_binary
+                data = get_page_binary(screen["screen_name"], "color")
+                if data:
+                    return _etag_response(data, "application/octet-stream")
+                raw = render_dashboard_raw("newspaper.html", get_mock_context("newspaper.html", battery_info["label"]))
+            else:
+                # Default newspaper
+                ctx = get_mock_context("newspaper.html", battery_info["label"])
+                ctx["battery_info"] = battery_info
+                raw = render_dashboard_raw("newspaper.html", ctx)
+
+            return _etag_response(raw, "application/octet-stream")
+        except Exception as e:
+            # Graceful fallback for any registration/DB error
+            print(f"[server] Device-aware render failed: {e}")
             fname = "newspaper.html"
-            context = get_mock_context("newspaper.html", battery_info["label"])
+            context = get_mock_context(fname, battery_info["label"])
             context["battery_info"] = battery_info
             raw = render_dashboard_raw(fname, context)
             return _etag_response(raw, "application/octet-stream")
-
-        # Get assigned screens for this device
-        screens = get_device_screens(device_id)
-
-        if not screens:
-            # Device registered but no screens assigned — show registration info
-            return _render_register_page(device_id, "e1002")
-
-        # Serve the assigned screen at page index (wraps around)
-        try:
-            n = int(page_n) % len(screens)
-        except ValueError:
-            n = 0
-        screen = screens[n]
-        config = json.loads(screen["screen_config"])
-
-        # Render based on screen type
-        if screen["screen_type"] == "weather":
-            ctx = get_weather_context(battery_info["label"])
-            ctx["battery_info"] = battery_info
-            raw = render_dashboard_raw("weather.html", ctx)
-        elif screen["screen_type"] == "maintenance":
-            ctx = get_maintenance_context(battery_info["label"])
-            ctx["battery_info"] = battery_info
-            raw = render_dashboard_raw("maintenance.html", ctx)
-        elif screen["screen_type"] == "url":
-            # URL screenshots rendered by url_renderer
-            from url_renderer import get_page_binary
-            data = get_page_binary(screen["screen_name"], "color")
-            if data:
-                return _etag_response(data, "application/octet-stream")
-            raw = render_dashboard_raw("newspaper.html", get_mock_context("newspaper.html", battery_info["label"]))
-        else:
-            # Default newspaper
-            ctx = get_mock_context("newspaper.html", battery_info["label"])
-            ctx["battery_info"] = battery_info
-            raw = render_dashboard_raw("newspaper.html", ctx)
-
-        return _etag_response(raw, "application/octet-stream")
 
     # No device, no template — default to newspaper
     context = get_mock_context("newspaper.html", battery_info["label"])
@@ -424,59 +433,68 @@ def dashboard_bw_bin():
 
     # Device-aware mode: look up in DB
     if device_id:
-        device = get_device(device_id)
+        try:
+            device = get_device(device_id)
 
-        # Auto-adopt: register unknown device on first fetch
-        if not device:
-            variant = request.args.get("variant", "e1001")
-            device = register_device(device_id, variant)
+            # Auto-adopt: register unknown device on first fetch
+            if not device:
+                variant = request.args.get("variant", "e1001")
+                device = register_device(device_id, variant)
 
-        if not device:
-            # DB not available — fall back to default page
+            if not device:
+                # DB not available — fall back to default page
+                fname = "newspaper.html"
+                context = get_mock_context("newspaper.html", battery_info["label"])
+                context["battery_info"] = battery_info
+                raw = render_dashboard_raw_bw(fname, context)
+                return _etag_response(raw, "application/octet-stream")
+
+            # Get assigned screens for this device
+            screens = get_device_screens(device_id)
+
+            if not screens:
+                # Device registered but no screens assigned — show registration info
+                return _render_register_page(device_id, "e1001")
+
+            # Serve the assigned screen at page index (wraps around)
+            try:
+                n = int(page_n) % len(screens)
+            except ValueError:
+                n = 0
+            screen = screens[n]
+            config = json.loads(screen["screen_config"])
+
+            # Render based on screen type
+            if screen["screen_type"] == "weather":
+                ctx = get_weather_context(battery_info["label"])
+                ctx["battery_info"] = battery_info
+                raw = render_dashboard_raw_bw("weather.html", ctx)
+            elif screen["screen_type"] == "maintenance":
+                ctx = get_maintenance_context(battery_info["label"])
+                ctx["battery_info"] = battery_info
+                raw = render_dashboard_raw_bw("maintenance.html", ctx)
+            elif screen["screen_type"] == "url":
+                # URL screenshots rendered by url_renderer
+                from url_renderer import get_page_binary
+                data = get_page_binary(screen["screen_name"], "bw")
+                if data:
+                    return _etag_response(data, "application/octet-stream")
+                raw = render_dashboard_raw_bw("newspaper.html", get_mock_context("newspaper.html", battery_info["label"]))
+            else:
+                # Default newspaper
+                ctx = get_mock_context("newspaper.html", battery_info["label"])
+                ctx["battery_info"] = battery_info
+                raw = render_dashboard_raw_bw("newspaper.html", ctx)
+
+            return _etag_response(raw, "application/octet-stream")
+        except Exception as e:
+            # Graceful fallback for any registration/DB error
+            print(f"[server] Device-aware render failed: {e}")
             fname = "newspaper.html"
-            context = get_mock_context("newspaper.html", battery_info["label"])
+            context = get_mock_context(fname, battery_info["label"])
             context["battery_info"] = battery_info
             raw = render_dashboard_raw_bw(fname, context)
             return _etag_response(raw, "application/octet-stream")
-
-        # Get assigned screens for this device
-        screens = get_device_screens(device_id)
-
-        if not screens:
-            # Device registered but no screens assigned — show registration info
-            return _render_register_page(device_id, "e1001")
-
-        # Serve the assigned screen at page index (wraps around)
-        try:
-            n = int(page_n) % len(screens)
-        except ValueError:
-            n = 0
-        screen = screens[n]
-        config = json.loads(screen["screen_config"])
-
-        # Render based on screen type
-        if screen["screen_type"] == "weather":
-            ctx = get_weather_context(battery_info["label"])
-            ctx["battery_info"] = battery_info
-            raw = render_dashboard_raw_bw("weather.html", ctx)
-        elif screen["screen_type"] == "maintenance":
-            ctx = get_maintenance_context(battery_info["label"])
-            ctx["battery_info"] = battery_info
-            raw = render_dashboard_raw_bw("maintenance.html", ctx)
-        elif screen["screen_type"] == "url":
-            # URL screenshots rendered by url_renderer
-            from url_renderer import get_page_binary
-            data = get_page_binary(screen["screen_name"], "bw")
-            if data:
-                return _etag_response(data, "application/octet-stream")
-            raw = render_dashboard_raw_bw("newspaper.html", get_mock_context("newspaper.html", battery_info["label"]))
-        else:
-            # Default newspaper
-            ctx = get_mock_context("newspaper.html", battery_info["label"])
-            ctx["battery_info"] = battery_info
-            raw = render_dashboard_raw_bw("newspaper.html", ctx)
-
-        return _etag_response(raw, "application/octet-stream")
 
     # No device, no template — default to newspaper
     context = get_mock_context("newspaper.html", battery_info["label"])
