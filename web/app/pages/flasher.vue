@@ -34,13 +34,15 @@ function consoleLog(lines: Ref<string[]>, el: Ref<HTMLElement | null>, msg: stri
 }
 function consoleClear(lines: Ref<string[]>) { lines.value = [] }
 
-// ── Console refs (top-level so template auto-unwraps them) ──
+// ── Console refs ──
 const buildLines = ref<string[]>([])
 const buildEl = ref<HTMLElement | null>(null)
 const qfLines = ref<string[]>([])
 const qfEl = ref<HTMLElement | null>(null)
 const bleLines = ref<string[]>([])
 const bleEl = ref<HTMLElement | null>(null)
+const flashLines = ref<string[]>([])
+const flashEl = ref<HTMLElement | null>(null)
 
 // ── Build state ──
 const building = ref(false)
@@ -54,6 +56,52 @@ let lastShownCount = 0
 
 // ── Quick flash ──
 const qfStatus = ref('')
+
+// ── Local file upload ──
+const localFileName = ref('')
+const localBinSize = ref('')
+let localBinary: Uint8Array | null = null
+
+function handleLocalFile(event: Event) {
+  const target = event.target as HTMLInputElement
+  const file = target.files?.[0]
+  if (!file) return
+
+  localFileName.value = file.name
+  localBinSize.value = (file.size / 1024).toFixed(1) + ' KB'
+
+  const reader = new FileReader()
+  reader.onload = () => {
+    localBinary = new Uint8Array(reader.result as ArrayBuffer)
+    consoleLog(flashLines, flashEl, `Loaded local file: ${file.name} (${localBinSize.value})`)
+    showFlashCard()
+  }
+  reader.readAsArrayBuffer(file)
+}
+
+function clearLocalFile() {
+  localBinary = null
+  localFileName.value = ''
+  localBinSize.value = ''
+  const input = document.getElementById('local-file-input') as HTMLInputElement
+  if (input) input.value = ''
+  if (!firmwareUrl.value) flashCardVisible.value = false
+}
+
+// ── Flash to device ──
+const flashCardVisible = ref(false)
+const flashSource = ref('') // 'build' | 'local'
+const flashSourceDetail = ref('')
+const flashStatus = ref('')
+const flashing = ref(false)
+const flashProgress = ref(0)
+let flashPort: SerialPort | null = null
+
+function showFlashCard(source?: string, detail?: string) {
+  flashCardVisible.value = true
+  if (source) flashSource.value = source
+  if (detail) flashSourceDetail.value = detail
+}
 
 // ── BLE trigger ──
 const BLE_UUIDS: Record<string, { deviceName: string; serviceUUID: string; triggerUUID: string }> = {
@@ -80,9 +128,10 @@ async function startBuild() {
   consoleClear(buildLines)
   lastShownCount = 0
   firmwareUrl.value = ''
+  flashCardVisible.value = false
 
   try {
-    const config: Record<string, unknown> = {
+    const cfg: Record<string, unknown> = {
       device: device.value,
       wifi_ssid: wifiSsid.value,
       wifi_password: wifiPass.value,
@@ -93,20 +142,19 @@ async function startBuild() {
       select_timeout_s: selectTimeout.value,
       enable_beeps: enableBeeps.value
     }
-    if (bleName.value) config.ble_device_name = bleName.value
+    if (bleName.value) cfg.ble_device_name = bleName.value
 
     consoleLog(buildLines, buildEl, `Build started for ${device.value.toUpperCase()}`)
 
     const res = await fetch(`${API_BASE}/api/build`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(config)
+      body: JSON.stringify(cfg)
     })
     const data = await res.json()
     buildId.value = data.build_id
     consoleLog(buildLines, buildEl, `Build ID: ${data.build_id}`)
 
-    // Poll for status
     buildStartMs = Date.now()
     pollTimer = setInterval(pollBuild, 1000)
   } catch (e: unknown) {
@@ -144,6 +192,7 @@ async function pollBuild() {
       firmwareUrl.value = data.files?.merged || ''
       const sizeKB = ((data.files?.merged_size || 0) / 1024).toFixed(0)
       consoleLog(buildLines, buildEl, `Build complete! ${sizeKB} KB ready to flash.`)
+      showFlashCard('build', sizeKB + ' KB')
       if (pollTimer) { clearInterval(pollTimer); pollTimer = null }
     } else if (data.status === 'error') {
       building.value = false
@@ -155,29 +204,70 @@ async function pollBuild() {
   }
 }
 
+// ── Firmware download ──
+function downloadFirmware() {
+  if (firmwareUrl.value) {
+    window.open(firmwareUrl.value, '_blank')
+  }
+}
+
 // ── Quick flash ──
 async function quickFlash(variant: string) {
   qfStatus.value = 'fetching'
   consoleClear(qfLines)
-  consoleLog(qfLines, qfEl, 'Downloading pre-built firmware...')
+  consoleLog(qfLines, qfEl, 'Fetching pre-built image for ' + variant.toUpperCase() + '...')
 
   try {
     const res = await fetch(`${API_BASE}/prebuilt/${variant}`)
     if (!res.ok) throw new Error(`HTTP ${res.status}`)
     const blob = await res.blob()
+    const binary = new Uint8Array(await blob.arrayBuffer())
     const sizeKB = (blob.size / 1024).toFixed(0)
-    consoleLog(qfLines, qfEl, `Got ${sizeKB} KB firmware`)
+    consoleLog(qfLines, qfEl, `Downloaded ${sizeKB} KB`)
 
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `eink-${variant}-factory.bin`
-    a.click()
-    URL.revokeObjectURL(url)
+    // Try Web Serial flash directly
+    if (!(navigator as any).serial) {
+      // Fallback: download only
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `eink-${variant}-factory.bin`
+      a.click()
+      URL.revokeObjectURL(url)
+      qfStatus.value = 'done'
+      consoleLog(qfLines, qfEl, `Saved eink-${variant}-factory.bin (${sizeKB} KB)`)
+      consoleLog(qfLines, qfEl, 'Flash: esptool.py --port PORT write_flash 0x0 firmware.bin')
+      return
+    }
 
-    qfStatus.value = 'done'
-    consoleLog(qfLines, qfEl, `Saved eink-${variant}-factory.bin (${sizeKB} KB)`)
-    consoleLog(qfLines, qfEl, 'Flash: esptool.py --port PORT write_flash 0x0 firmware.bin')
+    // Release stale port, request fresh
+    if (flashPort) {
+      try { await flashPort.close() } catch (_) { /* best-effort */ }
+      flashPort = null
+    }
+
+    consoleLog(qfLines, qfEl, 'Requesting serial port...')
+    try {
+      flashPort = await (navigator as any).serial.requestPort()
+    } catch (e: any) {
+      if (e.name === 'NotFoundError' || e.name === 'AbortError') {
+        consoleLog(qfLines, qfEl, 'Cancelled — no port selected')
+        qfStatus.value = 'done'
+        return
+      }
+      throw e
+    }
+
+    consoleLog(qfLines, qfEl, `Flashing ${variant.toUpperCase()}...`)
+    await doFlash(binary, variant.toUpperCase(), {
+      log: (msg) => consoleLog(qfLines, qfEl, msg),
+      progress: (_pct) => {},
+      onComplete: () => {
+        qfStatus.value = 'done'
+        consoleLog(qfLines, qfEl, 'Flash complete! Device is rebooting.')
+      },
+    })
+
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e)
     consoleLog(qfLines, qfEl, `ERROR: ${msg}`)
@@ -185,11 +275,163 @@ async function quickFlash(variant: string) {
   }
 }
 
-// ── Firmware download ──
-function downloadFirmware() {
-  if (firmwareUrl.value) {
-    window.open(firmwareUrl.value, '_blank')
+// ── Flash to device ──
+async function startFlash() {
+  if (flashing.value) return
+  flashing.value = true
+  flashStatus.value = 'Connecting...'
+  flashProgress.value = 0
+  consoleClear(flashLines)
+  consoleLog(flashLines, flashEl, 'Preparing to flash...')
+
+  // Release previous session
+  if (flashPort) {
+    try { await flashPort.close() } catch (_) { /* best-effort */ }
+    flashPort = null
   }
+
+  try {
+    if (!(navigator as any).serial) {
+      throw new Error('Web Serial API not available. Use Chrome or Edge.')
+    }
+
+    consoleLog(flashLines, flashEl, 'Requesting serial port — select your ESP32 device...')
+    flashPort = await (navigator as any).serial.requestPort()
+
+    const info = flashPort!.getInfo()
+    const deviceLabel = (info as any).usbProductName || 'ESP32-S3'
+    consoleLog(flashLines, flashEl, 'Connected to ' + deviceLabel)
+    flashStatus.value = 'Connected to ' + deviceLabel + '. Flashing...'
+
+    // Get firmware binary — local file takes priority
+    let binary: Uint8Array
+    if (localBinary) {
+      binary = localBinary
+      consoleLog(flashLines, flashEl, `Using local file (${(binary.length / 1024).toFixed(1)} KB)`)
+    } else if (firmwareUrl.value) {
+      consoleLog(flashLines, flashEl, 'Downloading firmware...')
+      const resp = await fetch(firmwareUrl.value)
+      const buf = await resp.arrayBuffer()
+      binary = new Uint8Array(buf)
+      consoleLog(flashLines, flashEl, `Firmware: ${(binary.length / 1024).toFixed(1)} KB`)
+    } else {
+      throw new Error('No firmware available — build or load a file first')
+    }
+
+    await doFlash(binary, deviceLabel, {
+      log: (msg) => consoleLog(flashLines, flashEl, msg),
+      progress: (pct) => {
+        flashProgress.value = pct
+        flashStatus.value = `Flashing: ${pct}%`
+      },
+      onComplete: () => {
+        flashProgress.value = 100
+        flashStatus.value = 'Flash complete! Device is rebooting.'
+        consoleLog(flashLines, flashEl, 'SUCCESS: Flash complete!')
+      },
+    })
+
+  } catch (e: unknown) {
+    const err = e as { name?: string; message?: string }
+    const msg = err.message || ''
+
+    if (flashPort) {
+      try { await flashPort.close() } catch (_) { /* best-effort */ }
+      flashPort = null
+    }
+
+    if (msg.includes('No port selected') || err.name === 'AbortError') {
+      consoleLog(flashLines, flashEl, 'Cancelled — no port selected')
+      flashStatus.value = 'Flash cancelled'
+    } else {
+      consoleLog(flashLines, flashEl, `FLASH ERROR: ${msg}`)
+      flashStatus.value = 'Flash failed: ' + msg
+
+      if (msg.includes('timeout') || msg.includes('Failed to connect')) {
+        consoleLog(flashLines, flashEl, 'HINT: Auto-reset may have failed. Try manual download mode:')
+        consoleLog(flashLines, flashEl, '  Hold BOOT → press RESET → release BOOT.')
+      }
+    }
+  } finally {
+    flashing.value = false
+  }
+}
+
+// ── Shared flash engine (esptool-js) ──
+async function doFlash(
+  binary: Uint8Array,
+  label: string,
+  cb: { log: (m: string) => void; progress: (p: number) => void; onComplete: () => void }
+) {
+  // Dynamic import esptool-js (external URL, Vite passes through in dev)
+  const espMod = await import('https://unpkg.com/esptool-js@0.6.0/bundle.js') as any
+  const ESPLoader = espMod.ESPLoader
+  const Transport = espMod.Transport
+
+  const baudRates = [921600, 115200]
+  let lastError: Error | null = null
+
+  for (let i = 0; i < baudRates.length; i++) {
+    const baud = baudRates[i]
+    let transport: any = null
+    let loader: any = null
+
+    if (i > 0) {
+      cb.log(`⚠ Serial error — retrying at ${baud / 1000} kbps...`)
+      try { await flashPort!.close() } catch (_) { /* best-effort */ }
+      await new Promise(r => setTimeout(r, 1000))
+    }
+
+    try {
+      transport = new Transport(flashPort)
+      loader = new ESPLoader({
+        transport,
+        baudrate: baud,
+        terminal: { clean: () => {}, writeLine: (m: string) => cb.log('ESP: ' + m), write: () => {} },
+      })
+
+      cb.log(i === 0 ? 'Entering bootloader...' : 'Re-entering bootloader...')
+      await loader.main()
+      cb.log(`Chip: ${loader.chipName} — flashing at ${baud / 1000} kbps`)
+
+      await loader.writeFlash({
+        fileArray: [{ data: binary, address: 0x0 }],
+        flashSize: 'keep', flashMode: 'keep', flashFreq: 'keep',
+        eraseAll: false, compress: true,
+        reportProgress: (_fi: number, written: number, total: number) => {
+          cb.progress(Math.round((written / total) * 100))
+        },
+      })
+
+      cb.log('Done! Resetting device...')
+      await loader.after()
+
+      try { await transport.disconnect() } catch (_) { /* best-effort */ }
+      try { await flashPort!.close() } catch (_) { /* best-effort */ }
+      flashPort = null
+
+      cb.onComplete()
+      return
+
+    } catch (innerErr: any) {
+      if (transport) {
+        try { await transport.disconnect() } catch (_) { /* best-effort */ }
+      }
+      try { await flashPort!.close() } catch (_) { /* best-effort */ }
+      transport = null
+      loader = null
+      lastError = innerErr
+
+      const msg: string = innerErr.message || ''
+      const isSerial = msg.includes('stream stopped') || msg.includes('noise')
+        || msg.includes('corruption') || msg.includes('Invalid head')
+        || msg.includes('Bad size')
+
+      if (isSerial && i < baudRates.length - 1) continue
+      throw innerErr
+    }
+  }
+  throw lastError || new Error('Flash failed at all baud rates')
 }
 
 // ── BLE ──
@@ -238,6 +480,9 @@ async function triggerBLE() {
 
 onUnmounted(() => {
   if (pollTimer) clearInterval(pollTimer)
+  if (flashPort) {
+    flashPort.close().catch(() => {})
+  }
 })
 </script>
 
@@ -353,12 +598,12 @@ onUnmounted(() => {
       </div>
     </UCard>
 
-    <!-- Quick Flash (download only) -->
+    <!-- Quick Flash -->
     <UCard class="mb-4">
       <template #header>
         <span class="font-semibold">Pre-Built Firmware</span>
       </template>
-      <p class="text-sm text-muted mb-3">Download and flash manually (no build wait). Mock credentials — shows error screen on boot.</p>
+      <p class="text-sm text-muted mb-3">Download and flash pre-built images (mock credentials — shows error screen on boot).</p>
       <div class="flex gap-3">
         <UButton color="primary" variant="outline" block @click="quickFlash('e1002')">⬇ E1002 Color</UButton>
         <UButton color="primary" variant="outline" block @click="quickFlash('e1001')">⬇ E1001 BW</UButton>
@@ -420,6 +665,63 @@ onUnmounted(() => {
           Download Firmware
         </UButton>
       </div>
+    </UCard>
+
+    <!-- Local Firmware -->
+    <UCard class="mb-4">
+      <template #header>
+        <span class="font-semibold">Flash Local Firmware</span>
+      </template>
+      <p class="text-sm text-muted mb-3">Skip the server build — flash a <code class="text-xs bg-gray-100 dark:bg-gray-800 px-1 rounded">firmware.bin</code> you already have.</p>
+      <input type="file" id="local-file-input" accept=".bin" class="hidden" @change="handleLocalFile">
+      <div class="flex items-center gap-3">
+        <UButton color="neutral" variant="outline" @click="(document.getElementById('local-file-input') as HTMLInputElement)?.click()">
+          {{ localFileName ? 'Change file' : 'Choose firmware.bin' }}
+        </UButton>
+        <span v-if="localFileName" class="text-sm text-green-500">{{ localFileName }} ({{ localBinSize }})</span>
+        <UButton v-if="localFileName" color="neutral" variant="ghost" icon="i-lucide-x" size="sm" @click="clearLocalFile" />
+      </div>
+    </UCard>
+
+    <!-- Flash to Device -->
+    <UCard v-if="flashCardVisible" class="mb-4 border-green-500">
+      <template #header>
+        <span class="font-semibold text-green-500">Flash to Device</span>
+      </template>
+      <p class="text-sm text-muted mb-3">
+        Source: {{ flashSource === 'local' ? '📁 ' + flashSourceDetail : flashSource === 'build' ? '🔨 Server build (' + flashSourceDetail + ')' : 'Ready' }}
+      </p>
+      <UButton
+        color="primary"
+        block
+        :loading="flashing"
+        @click="startFlash"
+      >
+        {{ flashing ? 'Flashing...' : 'Flash via USB' }}
+      </UButton>
+
+      <div v-if="flashing || flashStatus" class="mt-3">
+        <p class="text-sm" :class="flashStatus.includes('failed') || flashStatus.includes('error') ? 'text-red-500' : flashStatus.includes('complete') ? 'text-green-500' : 'text-yellow-500'">
+          {{ flashStatus }}
+        </p>
+        <UProgress
+          v-if="flashing && flashProgress > 0"
+          :value="flashProgress"
+          class="mt-2"
+        />
+        <pre
+          v-if="flashLines.length"
+          ref="flashEl"
+          class="console mt-2"
+        >{{ flashLines.join('\n') }}</pre>
+      </div>
+
+      <p class="text-xs text-muted mt-3 space-y-1">
+        <span class="block"><strong>①</strong> Connect reTerminal via USB-C</span>
+        <span class="block"><strong>②</strong> Click <strong>Flash via USB</strong> and select the serial port</span>
+        <span class="block">Auto-reset handles everything — no button presses needed.</span>
+        <span class="block">If flashing fails, try: hold BOOT → press RESET → release BOOT → retry.</span>
+      </p>
     </UCard>
 
     <!-- BLE Trigger -->
