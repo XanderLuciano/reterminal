@@ -21,7 +21,10 @@ export default defineEventHandler(async (event) => {
     : undefined
 
   try {
-    const headers: Record<string, string> = {}
+    const headers: Record<string, string> = {
+      'X-Forwarded-Host': getRequestHost(event),
+      'X-Forwarded-Proto': url.protocol.replace(':', ''),
+    }
     if (body) headers['Content-Type'] = 'application/json'
     // Forward If-None-Match for ETag conditional requests (304 caching)
     const ifNoneMatch = getHeader(event, 'If-None-Match')
