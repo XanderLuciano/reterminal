@@ -8,7 +8,7 @@ const bulkAssignSchema = z.object({
     screenId: z.string().uuid(),
     sortOrder: z.number().int().min(0).default(0),
     enabled: z.boolean().default(true),
-    refreshInterval: z.number().int().min(60).max(86400).default(3600)
+    refreshInterval: z.number().int().min(1).max(168).default(6) // hours
   })).min(1).max(50)
 })
 

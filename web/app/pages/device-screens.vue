@@ -73,7 +73,7 @@ function addRow() {
     screenId: '',
     sortOrder: assignmentRows.value.length,
     enabled: true,
-    refreshInterval: 3600
+    refreshInterval: 6
   })
 }
 
@@ -192,8 +192,8 @@ onMounted(async () => {
               class="flex-1"
             />
 
-            <UFormField label="Refresh (sec)" class="w-28">
-              <UInput v-model.number="row.refreshInterval" type="number" min="60" max="86400" />
+            <UFormField label="Refresh (hours)" class="w-28">
+              <UInput v-model.number="row.refreshInterval" type="number" min="1" max="24" />
             </UFormField>
 
             <UCheckbox v-model="row.enabled" label="Active" />
