@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { nextTick } from 'vue'
+
 const config = useRuntimeConfig()
 const API_BASE = config.public.apiBase
 const BUILD_POLL_MAX_S = 600  // 10 minute max poll
@@ -22,19 +24,36 @@ const urlPreview = computed(() => {
   return base.replace(/\/+$/, '') + (device.value === 'e1002' ? '/dashboard.bin' : '/dashboard-bw.bin')
 })
 
+// ── Console helpers ──
+function timestamp() { return new Date().toLocaleTimeString() }
+
+function makeConsole(maxLines = 200) {
+  const lines = ref<string[]>([])
+  const el = ref<HTMLElement | null>(null)
+  function log(msg: string) {
+    lines.value.push(`[${timestamp()}] ${msg}`)
+    if (lines.value.length > maxLines) lines.value = lines.value.slice(-maxLines)
+    nextTick(() => { if (el.value) el.value.scrollTop = el.value.scrollHeight })
+  }
+  function clear() { lines.value = [] }
+  function text() { return lines.value.join('\n') }
+  return { lines, el, log, clear, text }
+}
+
 // ── Build state ──
+const buildConsole = makeConsole()
 const building = ref(false)
 const buildStatus = ref('')
 const buildMessage = ref('')
-const buildLog = ref('')
 const buildId = ref('')
 const firmwareUrl = ref('')
 let pollTimer: ReturnType<typeof setInterval> | null = null
 let buildStartMs = 0
+let lastShownCount = 0
 
 // ── Quick flash ──
+const qfConsole = makeConsole(100)
 const qfStatus = ref('')
-const qfLog = ref('')
 
 // ── BLE trigger ──
 const BLE_UUIDS: Record<string, { deviceName: string; serviceUUID: string; triggerUUID: string }> = {
@@ -50,8 +69,8 @@ const BLE_UUIDS: Record<string, { deviceName: string; serviceUUID: string; trigg
   }
 }
 
+const bleConsole = makeConsole(100)
 const bleStatus = ref('')
-const bleLogText = ref('')
 const bleActive = ref(false)
 
 // ── Build ──
@@ -59,7 +78,8 @@ async function startBuild() {
   building.value = true
   buildStatus.value = 'building'
   buildMessage.value = 'Starting build...'
-  buildLog.value = ''
+  buildConsole.clear()
+  lastShownCount = 0
   firmwareUrl.value = ''
 
   try {
@@ -76,6 +96,8 @@ async function startBuild() {
     }
     if (bleName.value) config.ble_device_name = bleName.value
 
+    buildConsole.log(`Build started for ${device.value.toUpperCase()}`)
+
     const res = await fetch(`${API_BASE}/build`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -83,12 +105,14 @@ async function startBuild() {
     })
     const data = await res.json()
     buildId.value = data.build_id
+    buildConsole.log(`Build ID: ${data.build_id}`)
 
     // Poll for status
     buildStartMs = Date.now()
     pollTimer = setInterval(pollBuild, 1000)
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e)
+    buildConsole.log(`ERROR: ${msg}`)
     buildStatus.value = 'error'
     buildMessage.value = `Failed to start build: ${msg}`
     building.value = false
@@ -108,8 +132,11 @@ async function pollBuild() {
     const res = await fetch(`${API_BASE}/build/${buildId.value}`)
     const data = await res.json()
 
-    if (data.lines) {
-      buildLog.value = data.lines.slice(-80).join('\n')
+    if (data.lines && data.lines.length > lastShownCount) {
+      for (const line of data.lines.slice(lastShownCount)) {
+        buildConsole.log(line)
+      }
+      lastShownCount = data.lines.length
     }
     buildMessage.value = data.message || ''
     buildStatus.value = data.status
@@ -117,9 +144,12 @@ async function pollBuild() {
     if (data.status === 'done') {
       building.value = false
       firmwareUrl.value = data.files?.merged || ''
+      const sizeKB = ((data.files?.merged_size || 0) / 1024).toFixed(0)
+      buildConsole.log(`Build complete! ${sizeKB} KB ready to flash.`)
       if (pollTimer) { clearInterval(pollTimer); pollTimer = null }
     } else if (data.status === 'error') {
       building.value = false
+      buildConsole.log(`BUILD ERROR: ${data.message}`)
       if (pollTimer) { clearInterval(pollTimer); pollTimer = null }
     }
   } catch {
@@ -130,14 +160,15 @@ async function pollBuild() {
 // ── Quick flash ──
 async function quickFlash(variant: string) {
   qfStatus.value = 'fetching'
-  qfLog.value = 'Downloading pre-built firmware...'
+  qfConsole.clear()
+  qfConsole.log('Downloading pre-built firmware...')
 
   try {
     const res = await fetch(`${API_BASE}/prebuilt/${variant}`)
     if (!res.ok) throw new Error(`HTTP ${res.status}`)
     const blob = await res.blob()
     const sizeKB = (blob.size / 1024).toFixed(0)
-    qfLog.value += `\nGot ${sizeKB} KB firmware`
+    qfConsole.log(`Got ${sizeKB} KB firmware`)
 
     // Trigger browser download
     const url = URL.createObjectURL(blob)
@@ -148,12 +179,12 @@ async function quickFlash(variant: string) {
     URL.revokeObjectURL(url)
 
     qfStatus.value = 'done'
-    qfLog.value += `\nSaved eink-${variant}-factory.bin (${sizeKB} KB)`
-    qfLog.value += '\nFlash: esptool.py --port PORT write_flash 0x0 firmware.bin'
+    qfConsole.log(`Saved eink-${variant}-factory.bin (${sizeKB} KB)`)
+    qfConsole.log('Flash: esptool.py --port PORT write_flash 0x0 firmware.bin')
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e)
+    qfConsole.log(`ERROR: ${msg}`)
     qfStatus.value = 'error'
-    qfLog.value += `\nERROR: ${msg}`
   }
 }
 
@@ -167,7 +198,7 @@ function downloadFirmware() {
 // ── BLE ──
 async function triggerBLE() {
   const config = BLE_UUIDS[device.value]
-  bleLogText.value = ''
+  bleConsole.clear()
   bleActive.value = true
   let btDevice: any = null
 
@@ -178,7 +209,7 @@ async function triggerBLE() {
       return
     }
 
-    bleLogText.value = 'Scanning for ' + config.deviceName + '...'
+    bleConsole.log('Scanning for ' + config.deviceName + '...')
 
     btDevice = await (navigator as any).bluetooth.requestDevice({
       filters: [
@@ -188,19 +219,19 @@ async function triggerBLE() {
       optionalServices: [config.serviceUUID]
     })
 
-    bleLogText.value += '\nConnecting GATT...'
+    bleConsole.log('Connecting GATT...')
     const server = await btDevice.gatt.connect()
     const service = await server.getPrimaryService(config.serviceUUID)
     const characteristic = await service.getCharacteristic(config.triggerUUID)
     await characteristic.writeValueWithoutResponse(new Uint8Array([0x01]))
 
     bleStatus.value = 'Trigger sent!'
-    bleLogText.value += '\n✓ Display will refresh within 60s'
+    bleConsole.log('✓ Display will refresh within 60s')
     setTimeout(() => { bleActive.value = false }, 3000)
 
   } catch (e: unknown) {
     const err = e as { name?: string; message?: string }
-    bleLogText.value += '\n' + (err.name || 'Error') + ': ' + (err.message || '')
+    bleConsole.log(`${err.name || 'Error'}: ${err.message || ''}`)
     bleStatus.value = 'BLE trigger failed: ' + (err.message || '')
     bleActive.value = false
   } finally {
@@ -338,7 +369,11 @@ onUnmounted(() => {
       <p v-if="qfStatus" class="mt-3 text-sm" :class="qfStatus === 'error' ? 'text-red-500' : qfStatus === 'done' ? 'text-green-500' : 'text-yellow-500'">
         {{ qfStatus === 'fetching' ? 'Downloading...' : qfStatus === 'done' ? 'Download ready' : 'Error' }}
       </p>
-      <pre v-if="qfLog" class="mt-2 text-xs text-muted bg-gray-100 dark:bg-gray-800 p-3 rounded max-h-40 overflow-auto">{{ qfLog }}</pre>
+      <pre
+        v-if="qfConsole.lines.value.length"
+        ref="qfConsole.el"
+        class="console mt-2"
+      >{{ qfConsole.text() }}</pre>
     </UCard>
 
     <!-- Build -->
@@ -373,9 +408,10 @@ onUnmounted(() => {
         />
 
         <pre
-          v-if="buildLog"
-          class="mt-2 text-xs text-muted bg-gray-100 dark:bg-gray-800 p-3 rounded max-h-60 overflow-auto"
-        >{{ buildLog }}</pre>
+          v-if="buildConsole.lines.value.length"
+          ref="buildConsole.el"
+          class="console mt-2"
+        >{{ buildConsole.text() }}</pre>
 
         <UButton
           v-if="buildStatus === 'done' && firmwareUrl"
@@ -408,7 +444,31 @@ onUnmounted(() => {
       <p v-if="bleStatus" class="mt-3 text-sm" :class="bleStatus.includes('failed') || bleStatus.includes('not available') ? 'text-red-500' : 'text-green-500'">
         {{ bleStatus }}
       </p>
-      <pre v-if="bleLogText" class="mt-2 text-xs text-muted bg-gray-100 dark:bg-gray-800 p-3 rounded max-h-40 overflow-auto">{{ bleLogText }}</pre>
+      <pre
+        v-if="bleConsole.lines.value.length"
+        ref="bleConsole.el"
+        class="console mt-2"
+      >{{ bleConsole.text() }}</pre>
     </UCard>
   </div>
 </template>
+
+<style scoped>
+.console {
+  font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', 'JetBrains Mono', monospace;
+  font-size: 0.75rem;
+  line-height: 1.5;
+  padding: 0.75rem;
+  border-radius: 0.5rem;
+  max-height: 20rem;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+  color: #4ade80;
+  background: #0f172a;
+}
+:root.dark .console {
+  color: #86efac;
+  background: #020617;
+}
+</style>
