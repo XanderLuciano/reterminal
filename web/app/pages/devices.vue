@@ -98,8 +98,15 @@ async function registerDevice() {
       for (const [k, v] of Object.entries(err.data.fieldErrors)) {
         formErrors.value[k] = (v as string[])[0]
       }
+      const details = Object.entries(err.data.fieldErrors)
+        .map(([k, v]) => `${k}: ${(v as string[]).join(', ')}`)
+        .join('; ')
+      toast.add({ title: `Error (${err.status || 400})`, description: details, color: 'error' })
     } else {
-      toast.add({ title: 'Error', description: err.statusMessage || 'Failed to register device', color: 'error' })
+      const desc = [err.statusMessage, err.message, 'Failed to register device']
+        .filter(Boolean)
+        .join(' — ')
+      toast.add({ title: `Error (${err.status || '?'})`, description: desc, color: 'error' })
     }
   }
 }
