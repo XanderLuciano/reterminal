@@ -339,14 +339,6 @@ void showSplash() {
   beepBoot();
 }
 
-void showSetup() {
-#ifdef E1002_VARIANT
-  showEmbeddedBitmap(register_e1002, register_e1002_len);
-#elif defined(E1001_VARIANT)
-  showEmbeddedBitmap(register_e1001_bw, register_e1001_bw_len);
-#endif
-}
-
 // ── Button selection ──
 
 int selectPage(int currentPage) {
@@ -521,15 +513,7 @@ void setup() {
   if (rtc_first_boot) {
     rtc_first_boot = false; rtc_sleep_cycles = 0;
     showSplash();
-    delay(2000);
-    showSetup();
-    // Wait for button press before attempting connection
-    while (digitalRead(BTN_LEFT) == HIGH &&
-           digitalRead(BTN_RIGHT) == HIGH &&
-           digitalRead(BTN_GREEN) == HIGH) {
-      delay(50);
-    }
-    delay(200);  // debounce
+    delay(500);
     refreshAndShow(0);
     enterUSBAwareSleep();
     return;
