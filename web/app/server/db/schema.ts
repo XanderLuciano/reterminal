@@ -31,7 +31,7 @@ export const deviceScreens = sqliteTable('device_screens', {
   screenId: text('screen_id').notNull().references(() => screens.id),
   sortOrder: integer('sort_order').notNull().default(0),
   enabled: integer('enabled').notNull().default(1), // boolean
-  refreshInterval: integer('refresh_interval').default(6), // hours
+  refreshInterval: integer('refresh_interval').default(21600), // seconds (6h)
 })
 
 // ── Zod validation schemas ──
@@ -63,5 +63,5 @@ export const deviceScreenSchema = z.object({
   screenId: z.string().uuid(),
   sortOrder: z.number().int().min(0).default(0),
   enabled: z.boolean().default(true),
-  refreshInterval: z.number().int().min(1).max(168).default(6), // hours
+  refreshInterval: z.number().int().min(3600).max(604800).default(21600), // seconds (1h to 7d)
 })

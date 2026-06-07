@@ -47,7 +47,7 @@ async function fetchAssignments() {
       screenId: a.screenId,
       sortOrder: a.sortOrder,
       enabled: a.enabled,
-      refreshInterval: a.refreshInterval
+      refreshInterval: Math.round((a.refreshInterval || 21600) / 3600)  // seconds → hours for UI
     }))
   } catch (err: any) {
     toast.add({ title: 'Error', description: err.statusMessage || 'Failed to load assignments', color: 'error' })
@@ -73,7 +73,7 @@ function addRow() {
     screenId: '',
     sortOrder: assignmentRows.value.length,
     enabled: true,
-    refreshInterval: 6
+    refreshInterval: 21600
   })
 }
 
@@ -106,7 +106,7 @@ async function saveAssignments() {
   try {
     await $fetch(`/api/devices/${selectedDeviceId.value}/screens`, {
       method: 'POST',
-      body: { screens: assignmentRows.value }
+      body: { screens: assignmentRows.value.map(r => ({ ...r, refreshInterval: Math.round(r.refreshInterval * 3600) })) }
     })
     toast.add({ title: 'Saved', description: 'Screen assignments updated', color: 'success' })
     await fetchAssignments()
@@ -193,7 +193,7 @@ onMounted(async () => {
             />
 
             <UFormField label="Refresh (hours)" class="w-28">
-              <UInput v-model.number="row.refreshInterval" type="number" min="1" max="24" />
+              <UInput v-model.number="row.refreshInterval" type="number" min="1" max="168" />
             </UFormField>
 
             <UCheckbox v-model="row.enabled" label="Active" />

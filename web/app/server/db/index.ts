@@ -48,7 +48,7 @@ function initTables(sqlite: Database.Database) {
       screen_id TEXT NOT NULL REFERENCES screens(id),
       sort_order INTEGER NOT NULL DEFAULT 0,
       enabled INTEGER NOT NULL DEFAULT 1,
-      refresh_interval INTEGER DEFAULT 6
+      refresh_interval INTEGER DEFAULT 21600
     );
     CREATE INDEX IF NOT EXISTS idx_device_screens_device ON device_screens(device_id);
     CREATE INDEX IF NOT EXISTS idx_device_screens_screen ON device_screens(screen_id);
