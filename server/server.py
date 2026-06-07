@@ -367,7 +367,7 @@ def dashboard_bin():
 
             if not screens:
                 # Device registered but no screens assigned — show registration info
-                return _render_register_page(device_id, "e1002")
+                return _render_status_page("no_screens", device_id, "e1002")
 
             # Serve the assigned screen at page index (wraps around)
             try:
@@ -469,7 +469,7 @@ def dashboard_bw_bin():
 
             if not screens:
                 # Device registered but no screens assigned — show registration info
-                return _render_register_page(device_id, "e1001")
+                return _render_status_page("no_screens", device_id, "e1001")
 
             # Serve the assigned screen at page index (wraps around)
             try:
@@ -553,10 +553,14 @@ def _get_public_url() -> str:
     return f"{proto}://{host}"
 
 
-def _render_register_page(device_id: str, variant: str = "e1001") -> Response:
-    """Render a registration instruction page with QR code."""
+def _render_status_page(mode: str, device_id: str, variant: str = "e1001", device_name: str = "") -> Response:
+    """Render a device status screen with QR code.
+    
+    mode: "register" = device not in DB yet, needs registration
+          "no_screens" = device registered but no screens assigned
+    """
     base_url = _get_public_url()
-    register_url = f"{base_url}/devices?register={device_id}"
+    register_url = f"{base_url}/device-screens?device={device_id}"
 
     try:
         import qrcode, io as io_mod, base64
@@ -573,7 +577,9 @@ def _render_register_page(device_id: str, variant: str = "e1001") -> Response:
 
     from renderer import render_dashboard_raw, render_dashboard_raw_bw
     ctx = {
+        "mode": mode,
         "device_id": device_id,
+        "device_name": device_name or f"Display {device_id[:4]}",
         "register_url": register_url,
         "qr_b64": qr_b64,
     }
