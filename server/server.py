@@ -312,17 +312,19 @@ def preview_png():
     return Response(png_data, mimetype="image/png")
 
 
-def _etag_response(data: bytes, mimetype: str = "application/octet-stream", refresh_interval: int = 0):
-    """Return a Response with ETag and optional X-Refresh-Interval headers.
+def _etag_response(data: bytes, mimetype: str = "application/octet-stream", wifi_refresh_hours: int = 0):
+    """Return a Response with ETag and optional X-WiFi-Refresh-Interval headers.
     
-    refresh_interval: seconds between auto-refreshes (0 = use firmware default).
-    The firmware reads X-Refresh-Interval to override its sleep interval.
+    wifi_refresh_hours: hours between full WiFi fetch/updates (0 = use firmware default).
+    The firmware reads X-WiFi-Refresh-Interval to override its wifi refresh timing.
+    The BLE wake cycle (DEEP_SLEEP_SECONDS) stays at compiled default and is NOT
+    affected by this header — BLE triggers remain responsive.
     """
     import hashlib
     etag = hashlib.md5(data).hexdigest()
     headers = {"ETag": etag}
-    if refresh_interval >= 30:
-        headers["X-Refresh-Interval"] = str(refresh_interval)
+    if wifi_refresh_hours >= 1:
+        headers["X-WiFi-Refresh-Interval"] = str(wifi_refresh_hours)
     if request.headers.get("If-None-Match") == etag:
         return Response(status=304)
     return Response(data, mimetype=mimetype, headers=headers)
@@ -394,7 +396,7 @@ def dashboard_bin():
                 from url_renderer import get_page_binary
                 data = get_page_binary(screen["screen_name"], "color")
                 if data:
-                    return _etag_response(data, "application/octet-stream", refresh_interval=_get_device_refresh_interval(device_id))
+                    return _etag_response(data, "application/octet-stream", wifi_refresh_hours=_get_device_refresh_interval(device_id))
                 raise RuntimeError(f"URL page '{screen['screen_name']}' returned no data — check the URL and try re-rendering")
             else:
                 # Default newspaper
@@ -403,7 +405,7 @@ def dashboard_bin():
                 raw = render_dashboard_raw("newspaper.html", ctx)
 
             interval = _get_device_refresh_interval(device_id)
-            return _etag_response(raw, "application/octet-stream", refresh_interval=interval)
+            return _etag_response(raw, "application/octet-stream", wifi_refresh_hours=interval)
         except Exception as e:
             tb = traceback.format_exc()
             print(f"[server] Device-aware render failed:\n{tb}")
@@ -493,7 +495,7 @@ def dashboard_bw_bin():
                 from url_renderer import get_page_binary
                 data = get_page_binary(screen["screen_name"], "bw")
                 if data:
-                    return _etag_response(data, "application/octet-stream", refresh_interval=_get_device_refresh_interval(device_id))
+                    return _etag_response(data, "application/octet-stream", wifi_refresh_hours=_get_device_refresh_interval(device_id))
                 raise RuntimeError(f"URL page '{screen['screen_name']}' returned no data — check the URL and try re-rendering")
             else:
                 # Default newspaper
@@ -502,7 +504,7 @@ def dashboard_bw_bin():
                 raw = render_dashboard_raw_bw("newspaper.html", ctx)
 
             interval = _get_device_refresh_interval(device_id)
-            return _etag_response(raw, "application/octet-stream", refresh_interval=interval)
+            return _etag_response(raw, "application/octet-stream", wifi_refresh_hours=interval)
         except Exception as e:
             tb = traceback.format_exc()
             print(f"[server] Device-aware render failed:\n{tb}")
@@ -540,10 +542,12 @@ def _render_debug_error(info: dict, variant: str = "e1001") -> bytes:
 
 
 def _get_device_refresh_interval(device_id: str) -> int:
-    """Get the minimum refresh interval for a device's assigned screens, in seconds.
+    """Get the minimum WiFi refresh interval for a device's assigned screens, in hours.
     
-    Returns 0 if no screens are assigned or DB is unavailable
-    (firmware will use its compiled default).
+    The DB stores screen-level refresh intervals in seconds. We take the minimum
+    across all enabled screens (all must refresh at least this often).
+    Returns 0 if no screens or DB unavailable (firmware uses compiled default).
+    The header is X-WiFi-Refresh-Interval (hours) — BLE wake cycle is unaffected.
     """
     from device_db import get_device_screens
     try:
@@ -551,8 +555,10 @@ def _get_device_refresh_interval(device_id: str) -> int:
         if not screens:
             return 0
         intervals = [s.get("refresh_interval", 0) or 0 for s in screens]
-        valid = [i for i in intervals if i >= 30]
-        return min(valid) if valid else 0
+        valid_seconds = [i for i in intervals if i >= 3600]  # min 1h
+        if not valid_seconds:
+            return 0
+        return max(1, min(valid_seconds) // 3600)  # convert to hours
     except Exception:
         return 0
 

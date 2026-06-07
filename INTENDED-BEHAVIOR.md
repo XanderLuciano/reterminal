@@ -182,31 +182,46 @@ Then rebuild firmware. The `.h` file is checked into git so the build environmen
 ## 6. Device Wake / Sleep Cycle
 
 ```
-Timer (rtc_sleep_interval) or Button or BLE Trigger
+Timer (DEEP_SLEEP_SECONDS = 60s) or Button or BLE Trigger
   ↓
-Wake from deep sleep
+Wake from deep sleep (fixed 60s regardless of wifi interval)
   ↓
 Button wake:
   Green button: refresh current page immediately (no page menu)
   Left/Right:   page selection mode (30s timeout, cycles through pages)
 Timer wake:     BLE advertise 10s for trigger → if triggered → refresh → enterUSBAwareSleep()
-Health (6h):    skip BLE → WiFi → fetch → refresh → enterUSBAwareSleep()
+WiFi refresh:   when (wake_count * 60s) >= rtc_wifi_refresh_hours → WiFi → fetch → refresh
   ↓
 enterUSBAwareSleep():
   USB connected →   light sleep (5s loop) with LED active, re-check charge state
-  No USB →          deep sleep (rtc_sleep_interval, default 60s)
+  No USB →          deep sleep (60s, fixed BLE wake cycle)
 ```
 
-### Sleep interval is dynamic
+### Two separate timing concerns
 
-The server sends `X-Refresh-Interval` header in every `.bin` response with the minimum
-refresh interval across all assigned screens (in seconds). The firmware reads this
-header and stores it in `rtc_sleep_interval` (RTC memory, survives deep sleep).
+The device has TWO independent timing values:
 
-- `rtc_sleep_interval` overrides the compiled `DEEP_SLEEP_SECONDS` constant
-- Only accepted if between 30 and 604800 (30s to 7 days)
-- If no header received, falls back to compiled default (60s)
-- Updated on every successful fetch, so the device stays in sync with web UI config
+**1. BLE wake cycle (compiled, `DEEP_SLEEP_SECONDS = 60`)**
+- How often the device wakes from deep sleep to check for BLE triggers and buttons
+- This is a hardware/battery concern and is NOT server-configurable
+- Default 60s means BLE triggers are responsive within ~1 minute
+- Changing this requires a firmware rebuild
+
+**2. WiFi refresh interval (server-configurable, `rtc_wifi_refresh_hours`)**
+- How often the device actually connects to WiFi and fetches new content
+- Stored in RTC memory, overridable via `X-WiFi-Refresh-Interval` (hours) header
+- Server computes minimum interval across all assigned screens:
+  - DB stores per-screen intervals in seconds
+  - Server converts to hours: `max(1h, min(valid_screen_intervals) / 3600)`
+  - Sends as `X-WiFi-Refresh-Interval: <hours>` header on every `.bin` response
+- Firmware sanity: 1h to 168h (7 days)
+- Default: 6h (compiled, matches web UI default)
+
+### Why separate?
+- BLE triggers need responsive wake (60s is fine for battery life)
+- WiFi is expensive (~500mA burst) — only do it as often as content actually changes
+- You can BLE-trigger a refresh any time without waiting for the wifi interval
+- Changing wifi interval doesn't affect BLE responsiveness or battery drain from deep sleep
 
 ### Button behavior
 

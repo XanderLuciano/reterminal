@@ -16,9 +16,9 @@
 // ── Shared config ──
 const int NUM_PAGES = 3;
 const char* TEMPLATE_NAMES[] = {"newspaper", "weather", "maintenance"};
-const uint64_t DEEP_SLEEP_SECONDS = 60;
-const int ADVERTISE_TIMEOUT_S = 10;
-const int HEALTH_INTERVAL_HOURS = 6;
+const uint64_t DEEP_SLEEP_SECONDS = 60;  // BLE wake cycle (compiled, not server-configurable)
+const int ADVERTISE_TIMEOUT_S = 10;      // BLE advertising window per wake
+const int WIFI_REFRESH_INTERVAL_HOURS = 6;  // compiled default, can be overridden by server
 const int SELECT_TIMEOUT_S = 30;
 const bool ENABLE_BEEPS = true;
 
@@ -80,7 +80,7 @@ uint8_t* framebuf = nullptr;
 RTC_DATA_ATTR uint32_t rtc_sleep_cycles = 0;
 RTC_DATA_ATTR bool rtc_first_boot = true;
 RTC_DATA_ATTR int rtc_active_page = 0;
-RTC_DATA_ATTR uint32_t rtc_sleep_interval = DEEP_SLEEP_SECONDS;  // can be overridden by server via X-Refresh-Interval header
+RTC_DATA_ATTR uint32_t rtc_wifi_refresh_hours = WIFI_REFRESH_INTERVAL_HOURS;  // overridden by X-WiFi-Refresh-Interval header
 RTC_DATA_ATTR char rtc_etags[3][64] = {{""}, {""}, {""}};
 RTC_DATA_ATTR char rtc_device_id[17] = {0};  // 16 hex chars + null
 volatile bool bleTriggered = false;
@@ -292,12 +292,18 @@ int fetchPage(int page, int batteryPct) {
     delay(1);
   }
 
-  // Read X-Refresh-Interval header from server to override sleep interval
-  if (http.hasHeader("X-Refresh-Interval")) {
-    String val = http.header("X-Refresh-Interval");
-    uint32_t interval = (uint32_t)val.toInt();
-    if (interval >= 30 && interval <= 604800) {  // sanity: 30s to 7 days
-      rtc_sleep_interval = interval;
+  // Read X-WiFi-Refresh-Interval header to override wifi refresh timing
+  // HTTPClient::hasHeader may or may not be case-sensitive for custom headers
+  String headerVal;
+  if (http.hasHeader("X-WiFi-Refresh-Interval")) {
+    headerVal = http.header("X-WiFi-Refresh-Interval");
+  } else if (http.hasHeader("x-wifi-refresh-interval")) {
+    headerVal = http.header("x-wifi-refresh-interval");
+  }
+  if (headerVal.length() > 0) {
+    uint32_t hours = (uint32_t)headerVal.toInt();
+    if (hours >= 1 && hours <= 168) {  // sanity: 1h to 7 days
+      rtc_wifi_refresh_hours = hours;
     }
   }
 
@@ -471,8 +477,8 @@ void refreshAndShow(int page) {
 
 void goDeepSleep() {
   Serial0.flush();
-  uint32_t sleepSec = (rtc_sleep_interval > 0) ? rtc_sleep_interval : DEEP_SLEEP_SECONDS;
-  esp_sleep_enable_timer_wakeup(sleepSec * 1000000ULL);
+  // Always wake at DEEP_SLEEP_SECONDS for BLE + button responsiveness
+  esp_sleep_enable_timer_wakeup(DEEP_SLEEP_SECONDS * 1000000ULL);
   esp_sleep_enable_ext1_wakeup(
     (1ULL << BTN_LEFT) | (1ULL << BTN_RIGHT) | (1ULL << BTN_GREEN),
     ESP_EXT1_WAKEUP_ANY_LOW
@@ -588,7 +594,7 @@ void setup() {
     return;
   }
 
-  uint32_t healthCycles = (HEALTH_INTERVAL_HOURS * 3600) / DEEP_SLEEP_SECONDS;
+  uint32_t healthCycles = (rtc_wifi_refresh_hours * 3600UL) / DEEP_SLEEP_SECONDS;
   if (rtc_sleep_cycles >= healthCycles) {
     refreshAndShow(rtc_active_page);
     enterUSBAwareSleep();
