@@ -1,0 +1,23 @@
+# Build artifacts
+firmware/.pio/
+firmware/build/
+flasher/builds/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Node
+web/node_modules/
+web/.nuxt/
+web/.output/
+
+# Git
+.git/
+.gitignore
+
+# Docker
+Dockerfile
+docker-compose.yml
+.dockerignore

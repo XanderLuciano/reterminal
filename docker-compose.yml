@@ -19,6 +19,7 @@ services:
       - "3000:3000"   # Nuxt — web UI, devices/screens management API
     volumes:
       - ./server:/app/server
+      - ./firmware:/app/firmware
       - ./flasher:/app/flasher
       - ./flasher/builds:/app/flasher/builds
       - ./server/url_pages_data:/app/server/url_pages_data

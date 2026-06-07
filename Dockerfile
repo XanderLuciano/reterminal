@@ -40,6 +40,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends curl && \
 # Copy Python app
 COPY server/ ./server/
 COPY flasher/ ./flasher/
+COPY firmware/ ./firmware/
 
 # Copy Nuxt built output (already built in stage 2)
 COPY --from=nuxt-build /app/web/.output/ ./web/.output/
