@@ -182,18 +182,41 @@ Then rebuild firmware. The `.h` file is checked into git so the build environmen
 ## 6. Device Wake / Sleep Cycle
 
 ```
-Timer (60s) or Button or BLE Trigger
+Timer (rtc_sleep_interval) or Button or BLE Trigger
   ↓
 Wake from deep sleep
   ↓
-Button wake:    wait for page selection → confirm → refresh → enterUSBAwareSleep()
+Button wake:
+  Green button: refresh current page immediately (no page menu)
+  Left/Right:   page selection mode (30s timeout, cycles through pages)
 Timer wake:     BLE advertise 10s for trigger → if triggered → refresh → enterUSBAwareSleep()
 Health (6h):    skip BLE → WiFi → fetch → refresh → enterUSBAwareSleep()
   ↓
 enterUSBAwareSleep():
   USB connected →   light sleep (5s loop) with LED active, re-check charge state
-  No USB →          deep sleep (60s)
+  No USB →          deep sleep (rtc_sleep_interval, default 60s)
 ```
+
+### Sleep interval is dynamic
+
+The server sends `X-Refresh-Interval` header in every `.bin` response with the minimum
+refresh interval across all assigned screens (in seconds). The firmware reads this
+header and stores it in `rtc_sleep_interval` (RTC memory, survives deep sleep).
+
+- `rtc_sleep_interval` overrides the compiled `DEEP_SLEEP_SECONDS` constant
+- Only accepted if between 30 and 604800 (30s to 7 days)
+- If no header received, falls back to compiled default (60s)
+- Updated on every successful fetch, so the device stays in sync with web UI config
+
+### Button behavior
+
+| Button | Action |
+|---|---|
+| **Green** | **Refresh now** — immediately fetches current page from server |
+| **Left** | Cycle to previous page (beep count = page index) |
+| **Right** | Cycle to next page (beep count = page index) |
+| None (30s timeout) | Auto-selects last cycled page on next wake |
+
 
 ---
 
