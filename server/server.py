@@ -312,13 +312,20 @@ def preview_png():
     return Response(png_data, mimetype="image/png")
 
 
-def _etag_response(data: bytes, mimetype: str = "application/octet-stream"):
-    """Return a Response with ETag header. Returns 304 if client's If-None-Match matches."""
+def _etag_response(data: bytes, mimetype: str = "application/octet-stream", refresh_interval: int = 0):
+    """Return a Response with ETag and optional X-Refresh-Interval headers.
+    
+    refresh_interval: seconds between auto-refreshes (0 = use firmware default).
+    The firmware reads X-Refresh-Interval to override its sleep interval.
+    """
     import hashlib
     etag = hashlib.md5(data).hexdigest()
+    headers = {"ETag": etag}
+    if refresh_interval >= 30:
+        headers["X-Refresh-Interval"] = str(refresh_interval)
     if request.headers.get("If-None-Match") == etag:
         return Response(status=304)
-    return Response(data, mimetype=mimetype, headers={"ETag": etag})
+    return Response(data, mimetype=mimetype, headers=headers)
 
 
 @app.route("/dashboard.bin")
@@ -387,7 +394,7 @@ def dashboard_bin():
                 from url_renderer import get_page_binary
                 data = get_page_binary(screen["screen_name"], "color")
                 if data:
-                    return _etag_response(data, "application/octet-stream")
+                    return _etag_response(data, "application/octet-stream", refresh_interval=_get_device_refresh_interval(device_id))
                 raise RuntimeError(f"URL page '{screen['screen_name']}' returned no data — check the URL and try re-rendering")
             else:
                 # Default newspaper
@@ -395,7 +402,8 @@ def dashboard_bin():
                 ctx["battery_info"] = battery_info
                 raw = render_dashboard_raw("newspaper.html", ctx)
 
-            return _etag_response(raw, "application/octet-stream")
+            interval = _get_device_refresh_interval(device_id)
+            return _etag_response(raw, "application/octet-stream", refresh_interval=interval)
         except Exception as e:
             tb = traceback.format_exc()
             print(f"[server] Device-aware render failed:\n{tb}")
@@ -485,7 +493,7 @@ def dashboard_bw_bin():
                 from url_renderer import get_page_binary
                 data = get_page_binary(screen["screen_name"], "bw")
                 if data:
-                    return _etag_response(data, "application/octet-stream")
+                    return _etag_response(data, "application/octet-stream", refresh_interval=_get_device_refresh_interval(device_id))
                 raise RuntimeError(f"URL page '{screen['screen_name']}' returned no data — check the URL and try re-rendering")
             else:
                 # Default newspaper
@@ -493,7 +501,8 @@ def dashboard_bw_bin():
                 ctx["battery_info"] = battery_info
                 raw = render_dashboard_raw_bw("newspaper.html", ctx)
 
-            return _etag_response(raw, "application/octet-stream")
+            interval = _get_device_refresh_interval(device_id)
+            return _etag_response(raw, "application/octet-stream", refresh_interval=interval)
         except Exception as e:
             tb = traceback.format_exc()
             print(f"[server] Device-aware render failed:\n{tb}")
@@ -528,6 +537,24 @@ def _render_debug_error(info: dict, variant: str = "e1001") -> bytes:
         return render_dashboard_raw("debug_error.html", info)
     else:
         return render_dashboard_raw_bw("debug_error.html", info)
+
+
+def _get_device_refresh_interval(device_id: str) -> int:
+    """Get the minimum refresh interval for a device's assigned screens, in seconds.
+    
+    Returns 0 if no screens are assigned or DB is unavailable
+    (firmware will use its compiled default).
+    """
+    from device_db import get_device_screens
+    try:
+        screens = get_device_screens(device_id)
+        if not screens:
+            return 0
+        intervals = [s.get("refresh_interval", 0) or 0 for s in screens]
+        valid = [i for i in intervals if i >= 30]
+        return min(valid) if valid else 0
+    except Exception:
+        return 0
 
 
 def _get_public_url() -> str:

@@ -80,6 +80,7 @@ uint8_t* framebuf = nullptr;
 RTC_DATA_ATTR uint32_t rtc_sleep_cycles = 0;
 RTC_DATA_ATTR bool rtc_first_boot = true;
 RTC_DATA_ATTR int rtc_active_page = 0;
+RTC_DATA_ATTR uint32_t rtc_sleep_interval = DEEP_SLEEP_SECONDS;  // can be overridden by server via X-Refresh-Interval header
 RTC_DATA_ATTR char rtc_etags[3][64] = {{""}, {""}, {""}};
 RTC_DATA_ATTR char rtc_device_id[17] = {0};  // 16 hex chars + null
 volatile bool bleTriggered = false;
@@ -290,6 +291,16 @@ int fetchPage(int page, int batteryPct) {
     }
     delay(1);
   }
+
+  // Read X-Refresh-Interval header from server to override sleep interval
+  if (http.hasHeader("X-Refresh-Interval")) {
+    String val = http.header("X-Refresh-Interval");
+    uint32_t interval = (uint32_t)val.toInt();
+    if (interval >= 30 && interval <= 604800) {  // sanity: 30s to 7 days
+      rtc_sleep_interval = interval;
+    }
+  }
+
   http.end();
   if (total != FB_SIZE) return -1;
   return 1;
@@ -397,17 +408,9 @@ int selectPage(int currentPage) {
         start = millis();
       }
     }
-    if (digitalRead(BTN_GREEN) == LOW) {
-      delay(20);
-      if (digitalRead(BTN_GREEN) == LOW) {
-        beepConfirm();
-        while (digitalRead(BTN_GREEN) == LOW) delay(10);
-        return selected;
-      }
-    }
     delay(30);
   }
-  return -1;
+  return -2;  // timeout — no selection made, current page unchanged
 }
 
 // ── BLE ──
@@ -468,7 +471,8 @@ void refreshAndShow(int page) {
 
 void goDeepSleep() {
   Serial0.flush();
-  esp_sleep_enable_timer_wakeup(DEEP_SLEEP_SECONDS * 1000000ULL);
+  uint32_t sleepSec = (rtc_sleep_interval > 0) ? rtc_sleep_interval : DEEP_SLEEP_SECONDS;
+  esp_sleep_enable_timer_wakeup(sleepSec * 1000000ULL);
   esp_sleep_enable_ext1_wakeup(
     (1ULL << BTN_LEFT) | (1ULL << BTN_RIGHT) | (1ULL << BTN_GREEN),
     ESP_EXT1_WAKEUP_ANY_LOW
@@ -501,10 +505,18 @@ void enterUSBAwareSleep() {
     esp_sleep_wakeup_cause_t cause = esp_sleep_get_wakeup_cause();
 
     if (cause == ESP_SLEEP_WAKEUP_EXT1) {
-      // Button pressed during light sleep — handle it like normal button wake
+      // Button pressed during light sleep
       delay(50);  // debounce
-      int chosen = selectPage(rtc_active_page);
-      if (chosen >= 0) refreshAndShow(chosen);
+      if (digitalRead(BTN_GREEN) == LOW) {
+        // Green = refresh current page immediately
+        while (digitalRead(BTN_GREEN) == LOW) delay(10);
+        beepConfirm();
+        refreshAndShow(rtc_active_page);
+      } else {
+        // Left/Right = page selection mode
+        int chosen = selectPage(rtc_active_page);
+        if (chosen >= 0) refreshAndShow(chosen);
+      }
     }
 
     // Re-read charge state (may have changed: USB plug/unplug, charge complete)
@@ -560,8 +572,18 @@ void setup() {
   rtc_sleep_cycles++;
 
   if (btnWake) {
-    int chosen = selectPage(rtc_active_page);
-    if (chosen >= 0) refreshAndShow(chosen);
+    delay(50);  // debounce
+    // Check which button woke us
+    if (digitalRead(BTN_GREEN) == LOW) {
+      // Green button = refresh current page immediately
+      while (digitalRead(BTN_GREEN) == LOW) delay(10);
+      beepConfirm();
+      refreshAndShow(rtc_active_page);
+    } else {
+      // Left/Right = page selection mode (30s timeout, green not handled)
+      int chosen = selectPage(rtc_active_page);
+      if (chosen >= 0) refreshAndShow(chosen);
+    }
     enterUSBAwareSleep();
     return;
   }
