@@ -117,6 +117,7 @@ const flashSourceDetail = ref('')
 const flashStatus = ref('')
 const flashing = ref(false)
 const flashProgress = ref(0)
+const flashStarted = ref(false)
 let flashPort: SerialPort | null = null
 
 function showFlashCard(source?: string, detail?: string) {
@@ -304,6 +305,7 @@ async function startFlash() {
   flashing.value = true
   flashStatus.value = 'Connecting...'
   flashProgress.value = 0
+  flashStarted.value = false
   consoleClear(flashLines)
   consoleLog(flashLines, flashEl, 'Preparing to flash...')
 
@@ -345,10 +347,12 @@ async function startFlash() {
       log: (msg) => consoleLog(flashLines, flashEl, msg),
       progress: (pct) => {
         flashProgress.value = pct
+        flashStarted.value = true
         flashStatus.value = `Flashing: ${pct}%`
       },
       onComplete: () => {
         flashProgress.value = 100
+        flashStarted.value = true
         flashStatus.value = 'Flash complete! Device is rebooting.'
         consoleLog(flashLines, flashEl, 'SUCCESS: Flash complete!')
       },
@@ -736,12 +740,12 @@ onUnmounted(() => {
           {{ flashStatus }}
         </p>
         <UProgress
-          v-if="flashing && flashProgress === 0"
+          v-if="flashing && !flashStarted"
           animation="carousel"
           class="mt-2"
         />
         <UProgress
-          v-else-if="flashing && flashProgress > 0"
+          v-else-if="flashing && flashStarted"
           :value="flashProgress"
           class="mt-2"
         />
