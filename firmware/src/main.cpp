@@ -213,7 +213,12 @@ bool connectWiFi() {
   return WiFi.status() == WL_CONNECTED;
 }
 
-// Returns: 1 = fetched & rendered, 0 = unchanged (304), -1 = error
+// Return codes:
+//   1  = fetched & rendered successfully
+//   0  = unchanged (304)
+//  -1  = error with no framebuffer
+//  -2  = error with server-rendered debug framebuffer in framebuf
+int lastHttpCode = 0;  // set by fetchPage for showError to read
 int fetchPage(int page, int batteryPct) {
   framebuf = nullptr;
   framebuf = (uint8_t*)ps_malloc(FB_SIZE);
@@ -231,6 +236,7 @@ int fetchPage(int page, int batteryPct) {
   }
 
   int code = http.GET();
+  lastHttpCode = code;
 
   if (code == 304) {
     http.end();
@@ -238,7 +244,32 @@ int fetchPage(int page, int batteryPct) {
     return 0;  // unchanged
   }
 
-  if (code != 200) { http.end(); return -1; }
+  if (code != 200) {
+    // Try to read error response body — server may have sent a debug framebuffer.
+    // framebuf was already allocated above, so we read into it directly.
+    // If the response is too small to be a real framebuffer, we discard it.
+    if (code != 304) {
+      WiFiClient* stream = http.getStreamPtr();
+      memset(framebuf, 0xFF, FB_SIZE);  // fill with white background
+      size_t total = 0;
+      unsigned long start = millis();
+      while (total < FB_SIZE && stream->connected() && millis() - start < 3000) {
+        if (stream->available()) {
+          size_t n = stream->available();
+          if (total + n > FB_SIZE) n = FB_SIZE - total;
+          total += stream->readBytes(framebuf + total, n);
+        }
+        delay(1);
+      }
+      http.end();
+      if (total > 100) return -2;  // server-rendered error framebuffer
+      // Too small — discard
+      framebuf = nullptr;
+      return -1;
+    }
+    http.end();
+    return -1;
+  }
 
   // Store new ETag for next conditional fetch
   if (http.hasHeader("ETag")) {
@@ -306,19 +337,20 @@ void showEmbeddedBitmap(const uint8_t* bitmap, size_t len) {
 #endif
 }
 
+// Show a pre-rendered local error bitmap.
+// Server-rendered debug errors are handled in refreshAndShow (returns -2 from fetchPage).
 void showError(bool isWifiError) {
+  showEmbeddedBitmap(
+    isWifiError
 #ifdef E1002_VARIANT
-  showEmbeddedBitmap(
-    isWifiError ? error_wifi_e1002 : error_fetch_e1002,
-    isWifiError ? error_wifi_e1002_len : error_fetch_e1002_len
-  );
-#elif defined(E1001_VARIANT)
-  showEmbeddedBitmap(
-    isWifiError ? error_wifi_e1001_bw : error_fetch_e1001_bw,
-    isWifiError ? error_wifi_e1001_bw_len : error_fetch_e1001_bw_len
-  );
+      ? error_wifi_e1002 : error_fetch_e1002,
+      isWifiError ? error_wifi_e1002_len : error_fetch_e1002_len
+#else
+      ? error_wifi_e1001_bw : error_fetch_e1001_bw,
+      isWifiError ? error_wifi_e1001_bw_len : error_fetch_e1001_bw_len
 #endif
-
+  );
+  
   beepError();
   delay(500);
   // Wait for button press before going back to sleep
@@ -415,6 +447,12 @@ void refreshAndShow(int page) {
   int result = fetchPage(page, battery);
   WiFi.disconnect(true);
 
+  if (result == -2) {
+    // Server-rendered error framebuffer — show it
+    showPage(page);
+    rtc_sleep_cycles = 0;
+    return;
+  }
   if (result < 0) {
     showError(false);
     return;

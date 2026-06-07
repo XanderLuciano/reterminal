@@ -21,8 +21,8 @@ lines.append("")
 # ── E1002 (7-color, nibble-packed 800*480/2 = 192000 bytes) ──
 for name, ctx, var in [
     ("splash.html", {"device": "E1002"}, "splash_e1002"),
-    ("error.html", {"message": "WiFi connection failed."}, "error_wifi_e1002"),
-    ("error.html", {"message": "Failed to fetch dashboard."}, "error_fetch_e1002"),
+    ("error.html", {"header": "WiFi Connection Failed", "message": "Could not connect to network", "code": "Check SSID & password"}, "error_wifi_e1002"),
+    ("error.html", {"header": "Server Unreachable", "message": "Connected to WiFi but server did not respond", "code": "Check server URL & network"}, "error_fetch_e1002"),
     ("setup.html", {}, "register_e1002"),
 ]:
     raw = render_dashboard_raw(name, ctx)
@@ -39,8 +39,8 @@ for name, ctx, var in [
 # ── E1001 (monochrome, bit-packed 800*480/8 = 48000 bytes) ──
 for name, ctx, var in [
     ("splash.html", {"device": "E1001"}, "splash_e1001"),
-    ("error.html", {"message": "WiFi connection failed."}, "error_wifi_e1001"),
-    ("error.html", {"message": "Failed to fetch dashboard."}, "error_fetch_e1001"),
+    ("error.html", {"header": "WiFi Connection Failed", "message": "Could not connect to network", "code": "Check SSID & password"}, "error_wifi_e1001"),
+    ("error.html", {"header": "Server Unreachable", "message": "Connected to WiFi but server did not respond", "code": "Check server URL & network"}, "error_fetch_e1001"),
     ("setup.html", {}, "register_e1001"),
 ]:
     raw = render_dashboard_raw_bw(name, ctx)

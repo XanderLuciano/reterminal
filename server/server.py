@@ -9,6 +9,7 @@ Usage:
 import io
 import sys
 import json
+import traceback
 from datetime import datetime
 from pathlib import Path
 from flask import Flask, Response, request, send_from_directory
@@ -392,12 +393,18 @@ def dashboard_bin():
 
             return _etag_response(raw, "application/octet-stream")
         except Exception as e:
-            # Graceful fallback for any registration/DB error
-            print(f"[server] Device-aware render failed: {e}")
-            fname = "newspaper.html"
-            context = get_mock_context(fname, battery_info["label"])
-            context["battery_info"] = battery_info
-            raw = render_dashboard_raw(fname, context)
+            tb = traceback.format_exc()
+            print(f"[server] Device-aware render failed:\n{tb}")
+            raw = _render_debug_error({
+                "status_code": 500,
+                "url": request.url,
+                "device_id": device_id,
+                "page": page_n,
+                "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "error_type": type(e).__name__,
+                "exception": str(e),
+                "body_preview": tb[-800:],
+            }, "e1002")
             return _etag_response(raw, "application/octet-stream")
 
     # No device, no template — default to newspaper
@@ -488,12 +495,18 @@ def dashboard_bw_bin():
 
             return _etag_response(raw, "application/octet-stream")
         except Exception as e:
-            # Graceful fallback for any registration/DB error
-            print(f"[server] Device-aware render failed: {e}")
-            fname = "newspaper.html"
-            context = get_mock_context(fname, battery_info["label"])
-            context["battery_info"] = battery_info
-            raw = render_dashboard_raw_bw(fname, context)
+            tb = traceback.format_exc()
+            print(f"[server] Device-aware render failed:\n{tb}")
+            raw = _render_debug_error({
+                "status_code": 500,
+                "url": request.url,
+                "device_id": device_id,
+                "page": page_n,
+                "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "error_type": type(e).__name__,
+                "exception": str(e),
+                "body_preview": tb[-800:],
+            }, "e1001")
             return _etag_response(raw, "application/octet-stream")
 
     # No device, no template — default to newspaper
@@ -501,6 +514,20 @@ def dashboard_bw_bin():
     context["battery_info"] = battery_info
     raw = render_dashboard_raw_bw("newspaper.html", context)
     return _etag_response(raw, "application/octet-stream")
+
+
+def _render_debug_error(info: dict, variant: str = "e1001") -> bytes:
+    """Render a server error / debug page as a framebuffer binary.
+    
+    info keys: status_code, url, device_id, page, timestamp,
+               error_type, exception, body_preview
+    Returns raw framebuffer bytes for the device to display.
+    """
+    from renderer import render_dashboard_raw, render_dashboard_raw_bw
+    if variant == "e1002":
+        return render_dashboard_raw("debug_error.html", info)
+    else:
+        return render_dashboard_raw_bw("debug_error.html", info)
 
 
 def _render_register_page(device_id: str, variant: str = "e1001") -> Response:
@@ -771,6 +798,34 @@ def api_build_download(build_id, filename):
     if not build_dir.exists():
         return {"error": "Build not found"}, 404
     return send_from_directory(str(build_dir), filename)
+
+
+# ── Global error handler for E-Ink binary routes ──
+# Catches unhandled exceptions and returns a debug page as a valid framebuffer
+
+@app.errorhandler(500)
+def handle_500(e):
+    """Render 500 errors as debug framebuffer pages."""
+    path = request.path
+    # Only intercept binary routes (other routes just return JSON error)
+    if not path.endswith(".bin"):
+        return {"error": str(e)}, 500
+    
+    tb = traceback.format_exc()
+    device_id = request.args.get("device", "unknown")
+    variant = "e1002" if path == "/dashboard.bin" else "e1001"
+    info = {
+        "status_code": 500,
+        "url": request.url,
+        "device_id": device_id,
+        "page": request.args.get("page", "?"),
+        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "error_type": type(e).__name__ if hasattr(e, "__cause__") else "InternalError",
+        "exception": str(e)[:200],
+        "body_preview": tb[-800:],
+    }
+    raw = _render_debug_error(info, variant)
+    return Response(raw, mimetype="application/octet-stream", status=200)
 
 
 if __name__ == "__main__":
