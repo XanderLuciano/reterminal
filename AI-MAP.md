@@ -370,6 +370,12 @@ Pass `--name "E1001-Dashboard"` to target the mono display. UUIDs auto-resolved 
 
 ---
 
+### MUST maintain (behavioral)
+
+- **`INTENDED-BEHAVIOR.md`** — canonical design decisions, error hierarchy, registration flow, server routing, sleep cycles. Update this whenever changing what the system does or how errors are presented.
+
+---
+
 ## Tags
 
 #hardware #esp32 #epaper #eink #spectra6 #gxepd2 #platformio #arduino #flask #ble #nimble #dashboard #rendering #monochrome
