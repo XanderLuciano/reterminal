@@ -67,13 +67,14 @@ Flask receives request:
   get_device_screens("XXXX") → [] (no screens assigned yet)
   ↓
 If DB is unavailable (file missing):
-  Falls through to default newspaper page (graceful)
+  Raises RuntimeError — rendered as debug error page on e-ink with path info
 If DB available but no screens assigned:
-  Renders register.html page showing:
-    - Device ID (large monospace hex)
-    - Registration URL (auto-detected via X-Forwarded headers or PUBLIC_URL env var)
+  Renders status page with mode="no_screens" showing:
+    - Device name + ID (large monospace hex)
+    - "NEEDS SCREENS" badge
+    - URL to manage screens (auto-detected via X-Forwarded headers or PUBLIC_URL env var)
     - QR code (if qrcode[pil] installed)
-    - Instructions: visit URL, enter device ID, assign screens
+    - Instructions: visit URL, assign screens to this device
 ```
 
 ### Registration URL detection priority (`_get_public_url()`):

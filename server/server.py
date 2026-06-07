@@ -355,12 +355,8 @@ def dashboard_bin():
                 device = register_device(device_id, "e1002")
 
             if not device:
-                # DB not available — fall back to default page
-                fname = "newspaper.html"
-                context = get_mock_context("newspaper.html", battery_info["label"])
-                context["battery_info"] = battery_info
-                raw = render_dashboard_raw(fname, context)
-                return _etag_response(raw, "application/octet-stream")
+                # DB not available — show error on the e-ink
+                raise RuntimeError("Database not available: eink.db not found at web/.data/eink.db")
 
             # Get assigned screens for this device
             screens = get_device_screens(device_id)
@@ -392,7 +388,7 @@ def dashboard_bin():
                 data = get_page_binary(screen["screen_name"], "color")
                 if data:
                     return _etag_response(data, "application/octet-stream")
-                raw = render_dashboard_raw("newspaper.html", get_mock_context("newspaper.html", battery_info["label"]))
+                raise RuntimeError(f"URL page '{screen['screen_name']}' returned no data — check the URL and try re-rendering")
             else:
                 # Default newspaper
                 ctx = get_mock_context("newspaper.html", battery_info["label"])
@@ -457,12 +453,8 @@ def dashboard_bw_bin():
                 device = register_device(device_id, variant)
 
             if not device:
-                # DB not available — fall back to default page
-                fname = "newspaper.html"
-                context = get_mock_context("newspaper.html", battery_info["label"])
-                context["battery_info"] = battery_info
-                raw = render_dashboard_raw_bw(fname, context)
-                return _etag_response(raw, "application/octet-stream")
+                # DB not available — show error on the e-ink
+                raise RuntimeError("Database not available: eink.db not found at web/.data/eink.db")
 
             # Get assigned screens for this device
             screens = get_device_screens(device_id)
@@ -494,7 +486,7 @@ def dashboard_bw_bin():
                 data = get_page_binary(screen["screen_name"], "bw")
                 if data:
                     return _etag_response(data, "application/octet-stream")
-                raw = render_dashboard_raw_bw("newspaper.html", get_mock_context("newspaper.html", battery_info["label"]))
+                raise RuntimeError(f"URL page '{screen['screen_name']}' returned no data — check the URL and try re-rendering")
             else:
                 # Default newspaper
                 ctx = get_mock_context("newspaper.html", battery_info["label"])
