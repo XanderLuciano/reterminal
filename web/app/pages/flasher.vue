@@ -736,9 +736,13 @@ onUnmounted(() => {
           {{ flashStatus }}
         </p>
         <UProgress
-          v-if="flashing"
-          :value="flashProgress > 0 ? flashProgress : undefined"
-          :animation="flashProgress > 0 ? undefined : 'carousel'"
+          v-if="flashing && flashProgress === 0"
+          animation="carousel"
+          class="mt-2"
+        />
+        <UProgress
+          v-else-if="flashing && flashProgress > 0"
+          :value="flashProgress"
           class="mt-2"
         />
         <pre
