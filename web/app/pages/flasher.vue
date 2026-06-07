@@ -9,7 +9,7 @@ const BUILD_POLL_MAX_S = 600  // 10 minute max poll
 const device = ref<'e1001' | 'e1002'>('e1002')
 const wifiSsid = ref('')
 const wifiPass = ref('')
-const dashboardUrl = ref('')
+const dashboardUrl = ref(window?.location?.origin || '')
 const deepSleep = ref(60)
 const bleTimeout = ref(10)
 const healthInterval = ref(6)
@@ -54,6 +54,27 @@ let pollTimer: ReturnType<typeof setInterval> | null = null
 let buildStartMs = 0
 let lastShownCount = 0
 
+// ── Pre-built info ──
+const prebuiltInfo = ref<Record<string, { size: number; available: boolean; file: string; note?: string }>>({})
+
+async function loadPrebuiltInfo() {
+  try {
+    const res = await fetch(`${API_BASE}/api/prebuilt`)
+    prebuiltInfo.value = await res.json()
+  } catch { /* server may be offline */ }
+}
+
+const prebuiltLabel = computed(() => (variant: string) => {
+  const info = prebuiltInfo.value[variant]
+  if (!info || !info.available) return `${variant.toUpperCase()} (unavailable)`
+  return `${variant.toUpperCase()} (${(info.size / 1024).toFixed(0)} KB)`
+})
+
+const prebuiltDisabled = computed(() => (variant: string) => {
+  const info = prebuiltInfo.value[variant]
+  return !info || !info.available
+})
+
 // ── Quick flash ──
 const qfStatus = ref('')
 
@@ -90,6 +111,7 @@ function clearLocalFile() {
 
 // ── Flash to device ──
 const flashCardVisible = ref(false)
+const flashCardRef = ref<HTMLElement | null>(null)
 const flashSource = ref('') // 'build' | 'local'
 const flashSourceDetail = ref('')
 const flashStatus = ref('')
@@ -193,6 +215,7 @@ async function pollBuild() {
       const sizeKB = ((data.files?.merged_size || 0) / 1024).toFixed(0)
       consoleLog(buildLines, buildEl, `Build complete! ${sizeKB} KB ready to flash.`)
       showFlashCard('build', sizeKB + ' KB')
+      nextTick(() => { flashCardRef.value?.scrollIntoView({ behavior: 'smooth', block: 'center' }) })
       if (pollTimer) { clearInterval(pollTimer); pollTimer = null }
     } else if (data.status === 'error') {
       building.value = false
@@ -478,6 +501,11 @@ async function triggerBLE() {
   }
 }
 
+// ── Init ──
+onMounted(() => {
+  loadPrebuiltInfo()
+})
+
 onUnmounted(() => {
   if (pollTimer) clearInterval(pollTimer)
   if (flashPort) {
@@ -605,8 +633,8 @@ onUnmounted(() => {
       </template>
       <p class="text-sm text-muted mb-3">Download and flash pre-built images (mock credentials — shows error screen on boot).</p>
       <div class="flex gap-3">
-        <UButton color="primary" variant="outline" block @click="quickFlash('e1002')">⬇ E1002 Color</UButton>
-        <UButton color="primary" variant="outline" block @click="quickFlash('e1001')">⬇ E1001 BW</UButton>
+        <UButton color="primary" variant="outline" block :disabled="prebuiltDisabled('e1002')" @click="quickFlash('e1002')">{{ prebuiltLabel('e1002') }}</UButton>
+        <UButton color="primary" variant="outline" block :disabled="prebuiltDisabled('e1001')" @click="quickFlash('e1001')">{{ prebuiltLabel('e1001') }}</UButton>
       </div>
       <p v-if="qfStatus" class="mt-3 text-sm" :class="qfStatus === 'error' ? 'text-red-500' : qfStatus === 'done' ? 'text-green-500' : 'text-yellow-500'">
         {{ qfStatus === 'fetching' ? 'Downloading...' : qfStatus === 'done' ? 'Download ready' : 'Error' }}
@@ -647,6 +675,9 @@ onUnmounted(() => {
           animation="carousel"
           class="mt-2"
         />
+        <p v-if="buildStatus === 'building'" class="text-xs text-muted mt-1">
+          First build downloads toolchains — may take 2–5 min
+        </p>
 
         <pre
           ref="buildEl"
@@ -684,7 +715,7 @@ onUnmounted(() => {
     </UCard>
 
     <!-- Flash to Device -->
-    <UCard v-if="flashCardVisible" class="mb-4 border-green-500">
+    <UCard v-if="flashCardVisible" ref="flashCardRef" class="mb-4 border-2 border-green-500">
       <template #header>
         <span class="font-semibold text-green-500">Flash to Device</span>
       </template>
