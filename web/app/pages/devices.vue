@@ -121,7 +121,7 @@ onMounted(() => {
   const route = useRoute()
   const regId = route.query.register as string
   if (regId) {
-    form.value = { id: regId, name: '', variant: 'e1001' }
+    form.value = { id: regId, name: 'Unnamed', variant: 'e1001' }
     showRegister.value = true
   }
 })
