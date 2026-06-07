@@ -25,23 +25,24 @@ const urlPreview = computed(() => {
 })
 
 // ── Console helpers ──
-function timestamp() { return new Date().toLocaleTimeString() }
+function ts() { return new Date().toLocaleTimeString() }
 
-function makeConsole(maxLines = 200) {
-  const lines = ref<string[]>([])
-  const el = ref<HTMLElement | null>(null)
-  function log(msg: string) {
-    lines.value.push(`[${timestamp()}] ${msg}`)
-    if (lines.value.length > maxLines) lines.value = lines.value.slice(-maxLines)
-    nextTick(() => { if (el.value) el.value.scrollTop = el.value.scrollHeight })
-  }
-  function clear() { lines.value = [] }
-  function text() { return lines.value.join('\n') }
-  return { lines, el, log, clear, text }
+function consoleLog(lines: Ref<string[]>, el: Ref<HTMLElement | null>, msg: string, max = 200) {
+  lines.value.push(`[${ts()}] ${msg}`)
+  if (lines.value.length > max) lines.value = lines.value.slice(-max)
+  nextTick(() => { if (el.value) el.value.scrollTop = el.value.scrollHeight })
 }
+function consoleClear(lines: Ref<string[]>) { lines.value = [] }
+
+// ── Console refs (top-level so template auto-unwraps them) ──
+const buildLines = ref<string[]>([])
+const buildEl = ref<HTMLElement | null>(null)
+const qfLines = ref<string[]>([])
+const qfEl = ref<HTMLElement | null>(null)
+const bleLines = ref<string[]>([])
+const bleEl = ref<HTMLElement | null>(null)
 
 // ── Build state ──
-const buildConsole = makeConsole()
 const building = ref(false)
 const buildStatus = ref('')
 const buildMessage = ref('')
@@ -52,7 +53,6 @@ let buildStartMs = 0
 let lastShownCount = 0
 
 // ── Quick flash ──
-const qfConsole = makeConsole(100)
 const qfStatus = ref('')
 
 // ── BLE trigger ──
@@ -69,7 +69,6 @@ const BLE_UUIDS: Record<string, { deviceName: string; serviceUUID: string; trigg
   }
 }
 
-const bleConsole = makeConsole(100)
 const bleStatus = ref('')
 const bleActive = ref(false)
 
@@ -78,7 +77,7 @@ async function startBuild() {
   building.value = true
   buildStatus.value = 'building'
   buildMessage.value = 'Starting build...'
-  buildConsole.clear()
+  consoleClear(buildLines)
   lastShownCount = 0
   firmwareUrl.value = ''
 
@@ -96,23 +95,23 @@ async function startBuild() {
     }
     if (bleName.value) config.ble_device_name = bleName.value
 
-    buildConsole.log(`Build started for ${device.value.toUpperCase()}`)
+    consoleLog(buildLines, buildEl, `Build started for ${device.value.toUpperCase()}`)
 
-    const res = await fetch(`${API_BASE}/build`, {
+    const res = await fetch(`${API_BASE}/api/build`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(config)
     })
     const data = await res.json()
     buildId.value = data.build_id
-    buildConsole.log(`Build ID: ${data.build_id}`)
+    consoleLog(buildLines, buildEl, `Build ID: ${data.build_id}`)
 
     // Poll for status
     buildStartMs = Date.now()
     pollTimer = setInterval(pollBuild, 1000)
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e)
-    buildConsole.log(`ERROR: ${msg}`)
+    consoleLog(buildLines, buildEl, `ERROR: ${msg}`)
     buildStatus.value = 'error'
     buildMessage.value = `Failed to start build: ${msg}`
     building.value = false
@@ -120,7 +119,6 @@ async function startBuild() {
 }
 
 async function pollBuild() {
-  // Timeout after BUILD_POLL_MAX_S
   if (Date.now() - buildStartMs > BUILD_POLL_MAX_S * 1000) {
     if (pollTimer) { clearInterval(pollTimer); pollTimer = null }
     buildStatus.value = 'error'
@@ -129,12 +127,12 @@ async function pollBuild() {
     return
   }
   try {
-    const res = await fetch(`${API_BASE}/build/${buildId.value}`)
+    const res = await fetch(`${API_BASE}/api/build/${buildId.value}`)
     const data = await res.json()
 
     if (data.lines && data.lines.length > lastShownCount) {
       for (const line of data.lines.slice(lastShownCount)) {
-        buildConsole.log(line)
+        consoleLog(buildLines, buildEl, line)
       }
       lastShownCount = data.lines.length
     }
@@ -145,11 +143,11 @@ async function pollBuild() {
       building.value = false
       firmwareUrl.value = data.files?.merged || ''
       const sizeKB = ((data.files?.merged_size || 0) / 1024).toFixed(0)
-      buildConsole.log(`Build complete! ${sizeKB} KB ready to flash.`)
+      consoleLog(buildLines, buildEl, `Build complete! ${sizeKB} KB ready to flash.`)
       if (pollTimer) { clearInterval(pollTimer); pollTimer = null }
     } else if (data.status === 'error') {
       building.value = false
-      buildConsole.log(`BUILD ERROR: ${data.message}`)
+      consoleLog(buildLines, buildEl, `BUILD ERROR: ${data.message}`)
       if (pollTimer) { clearInterval(pollTimer); pollTimer = null }
     }
   } catch {
@@ -160,17 +158,16 @@ async function pollBuild() {
 // ── Quick flash ──
 async function quickFlash(variant: string) {
   qfStatus.value = 'fetching'
-  qfConsole.clear()
-  qfConsole.log('Downloading pre-built firmware...')
+  consoleClear(qfLines)
+  consoleLog(qfLines, qfEl, 'Downloading pre-built firmware...')
 
   try {
     const res = await fetch(`${API_BASE}/prebuilt/${variant}`)
     if (!res.ok) throw new Error(`HTTP ${res.status}`)
     const blob = await res.blob()
     const sizeKB = (blob.size / 1024).toFixed(0)
-    qfConsole.log(`Got ${sizeKB} KB firmware`)
+    consoleLog(qfLines, qfEl, `Got ${sizeKB} KB firmware`)
 
-    // Trigger browser download
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
@@ -179,11 +176,11 @@ async function quickFlash(variant: string) {
     URL.revokeObjectURL(url)
 
     qfStatus.value = 'done'
-    qfConsole.log(`Saved eink-${variant}-factory.bin (${sizeKB} KB)`)
-    qfConsole.log('Flash: esptool.py --port PORT write_flash 0x0 firmware.bin')
+    consoleLog(qfLines, qfEl, `Saved eink-${variant}-factory.bin (${sizeKB} KB)`)
+    consoleLog(qfLines, qfEl, 'Flash: esptool.py --port PORT write_flash 0x0 firmware.bin')
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e)
-    qfConsole.log(`ERROR: ${msg}`)
+    consoleLog(qfLines, qfEl, `ERROR: ${msg}`)
     qfStatus.value = 'error'
   }
 }
@@ -197,8 +194,8 @@ function downloadFirmware() {
 
 // ── BLE ──
 async function triggerBLE() {
-  const config = BLE_UUIDS[device.value]
-  bleConsole.clear()
+  const bconfig = BLE_UUIDS[device.value]
+  consoleClear(bleLines)
   bleActive.value = true
   let btDevice: any = null
 
@@ -209,29 +206,29 @@ async function triggerBLE() {
       return
     }
 
-    bleConsole.log('Scanning for ' + config.deviceName + '...')
+    consoleLog(bleLines, bleEl, 'Scanning for ' + bconfig.deviceName + '...')
 
     btDevice = await (navigator as any).bluetooth.requestDevice({
       filters: [
-        { name: config.deviceName },
-        { services: [config.serviceUUID] }
+        { name: bconfig.deviceName },
+        { services: [bconfig.serviceUUID] }
       ],
-      optionalServices: [config.serviceUUID]
+      optionalServices: [bconfig.serviceUUID]
     })
 
-    bleConsole.log('Connecting GATT...')
+    consoleLog(bleLines, bleEl, 'Connecting GATT...')
     const server = await btDevice.gatt.connect()
-    const service = await server.getPrimaryService(config.serviceUUID)
-    const characteristic = await service.getCharacteristic(config.triggerUUID)
+    const service = await server.getPrimaryService(bconfig.serviceUUID)
+    const characteristic = await service.getCharacteristic(bconfig.triggerUUID)
     await characteristic.writeValueWithoutResponse(new Uint8Array([0x01]))
 
     bleStatus.value = 'Trigger sent!'
-    bleConsole.log('✓ Display will refresh within 60s')
+    consoleLog(bleLines, bleEl, '✓ Display will refresh within 60s')
     setTimeout(() => { bleActive.value = false }, 3000)
 
   } catch (e: unknown) {
     const err = e as { name?: string; message?: string }
-    bleConsole.log(`${err.name || 'Error'}: ${err.message || ''}`)
+    consoleLog(bleLines, bleEl, `${err.name || 'Error'}: ${err.message || ''}`)
     bleStatus.value = 'BLE trigger failed: ' + (err.message || '')
     bleActive.value = false
   } finally {
@@ -370,10 +367,10 @@ onUnmounted(() => {
         {{ qfStatus === 'fetching' ? 'Downloading...' : qfStatus === 'done' ? 'Download ready' : 'Error' }}
       </p>
       <pre
-        v-if="qfConsole.lines.value.length"
-        ref="qfConsole.el"
+        v-if="qfLines.length"
+        ref="qfEl"
         class="console mt-2"
-      >{{ qfConsole.text() }}</pre>
+      >{{ qfLines.join('\n') }}</pre>
     </UCard>
 
     <!-- Build -->
@@ -400,7 +397,6 @@ onUnmounted(() => {
           {{ buildMessage }}
         </p>
 
-        <!-- Progress bar -->
         <UProgress
           v-if="buildStatus === 'building' || buildStatus === 'queued'"
           animation="carousel"
@@ -408,10 +404,10 @@ onUnmounted(() => {
         />
 
         <pre
-          v-if="buildConsole.lines.value.length"
-          ref="buildConsole.el"
+          ref="buildEl"
           class="console mt-2"
-        >{{ buildConsole.text() }}</pre>
+          :class="{ hidden: !buildLines.length }"
+        >{{ buildLines.join('\n') }}</pre>
 
         <UButton
           v-if="buildStatus === 'done' && firmwareUrl"
@@ -445,10 +441,10 @@ onUnmounted(() => {
         {{ bleStatus }}
       </p>
       <pre
-        v-if="bleConsole.lines.value.length"
-        ref="bleConsole.el"
+        v-if="bleLines.length"
+        ref="bleEl"
         class="console mt-2"
-      >{{ bleConsole.text() }}</pre>
+      >{{ bleLines.join('\n') }}</pre>
     </UCard>
   </div>
 </template>
