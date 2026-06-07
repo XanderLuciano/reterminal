@@ -7,6 +7,7 @@ Usage:
     → http://localhost:8088/preview.png    (full color preview without dithering)
 """
 import io
+import os
 import sys
 import json
 import traceback
@@ -24,6 +25,13 @@ from build_handler import start_build, get_build_status
 
 HERE = Path(__file__).parent
 app = Flask(__name__)
+
+# Public-facing URL for registration pages, QR codes, etc.
+# Override with PUBLIC_URL env var. Falls back to request host.
+# Examples:
+#   PUBLIC_URL=https://test.oisl.dev
+#   PUBLIC_URL=http://192.168.1.100:8088
+PUBLIC_URL = os.environ.get("PUBLIC_URL", "").rstrip("/")
 CORS(app)  # Allow Nuxt dev server (localhost:3000) to call API
 
 # ── Real weather data (via NWS API, no key needed) ──
@@ -530,13 +538,28 @@ def _render_debug_error(info: dict, variant: str = "e1001") -> bytes:
         return render_dashboard_raw_bw("debug_error.html", info)
 
 
+def _get_public_url() -> str:
+    """Get the public-facing URL for registration and QR codes.
+    
+    Priority:
+    1. PUBLIC_URL env var (explicit override)
+    2. X-Forwarded-Host / X-Forwarded-Proto headers (reverse proxy)
+    3. request.host (direct connection)
+    """
+    if PUBLIC_URL:
+        return PUBLIC_URL
+    proto = request.headers.get("X-Forwarded-Proto", "http")
+    host = request.headers.get("X-Forwarded-Host", request.host)
+    return f"{proto}://{host}"
+
+
 def _render_register_page(device_id: str, variant: str = "e1001") -> Response:
     """Render a registration instruction page with QR code."""
+    base_url = _get_public_url()
+    register_url = f"{base_url}/devices?register={device_id}"
+
     try:
         import qrcode, io as io_mod, base64
-
-        host = request.host
-        register_url = f"http://{host}/devices?register={device_id}"
 
         qr = qrcode.QRCode(box_size=4, border=2)
         qr.add_data(register_url)
@@ -547,7 +570,6 @@ def _render_register_page(device_id: str, variant: str = "e1001") -> Response:
         qr_b64 = base64.b64encode(buf.getvalue()).decode()
     except ImportError:
         qr_b64 = ""  # qrcode not installed — skip QR
-        register_url = f"http://{host}/devices?register={device_id}"
 
     from renderer import render_dashboard_raw, render_dashboard_raw_bw
     ctx = {
