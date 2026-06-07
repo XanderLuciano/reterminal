@@ -23,6 +23,7 @@ for name, ctx, var in [
     ("splash.html", {"device": "E1002"}, "splash_e1002"),
     ("error.html", {"message": "WiFi connection failed."}, "error_wifi_e1002"),
     ("error.html", {"message": "Failed to fetch dashboard."}, "error_fetch_e1002"),
+    ("setup.html", {}, "register_e1002"),
 ]:
     raw = render_dashboard_raw(name, ctx)
     lines.append(f"// {var}: {name} ({len(raw)} bytes)")
@@ -40,6 +41,7 @@ for name, ctx, var in [
     ("splash.html", {"device": "E1001"}, "splash_e1001"),
     ("error.html", {"message": "WiFi connection failed."}, "error_wifi_e1001"),
     ("error.html", {"message": "Failed to fetch dashboard."}, "error_fetch_e1001"),
+    ("setup.html", {}, "register_e1001"),
 ]:
     raw = render_dashboard_raw_bw(name, ctx)
     lines.append(f"// {var}_bw: {name} ({len(raw)} bytes)")

@@ -418,7 +418,8 @@ def _render_register_page(device_id: str) -> Response:
     """Render a registration instruction page with QR code."""
     import qrcode, io as io_mod, base64
 
-    register_url = f"http://YOUR_SERVER_IP:3000/devices?register={device_id}"
+    host = request.host
+    register_url = f"http://{host}/devices?register={device_id}"
 
     qr = qrcode.QRCode(box_size=4, border=2)
     qr.add_data(register_url)
