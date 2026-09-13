@@ -131,6 +131,16 @@ def render_dashboard_raw(template_name: str = "dashboard.html", context: dict | 
     return pack_nibbles(dithered)
 
 
+def render_dashboard_raw_solid(template_name: str = "dashboard.html", context: dict | None = None) -> bytes:
+    """HTML → screenshot → NEAREST (no-dither) quantize → nibble-packed binary.
+    Solid spot colors only; keeps QR codes and flat graphics razor sharp on E1002."""
+    png_data = render_html(template_name, context)
+    img = Image.open(io.BytesIO(png_data)).convert("RGB")
+    img = img.resize((800, 480), Image.LANCZOS)
+    solid = img.quantize(palette=SPECTRA6_PALETTE, dither=Image.Dither.NONE)
+    return pack_nibbles(solid)
+
+
 # ── Monochrome (BW) pipeline for E1001 / GxEPD2_BW displays ──
 
 def dither_bw(png_data: bytes) -> Image.Image:

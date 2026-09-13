@@ -15,7 +15,7 @@ from datetime import datetime
 from pathlib import Path
 from flask import Flask, Response, request, send_from_directory
 from flask_cors import CORS
-from renderer import render_html, dither_spectra6, render_dashboard_raw, render_dashboard_raw_bw, dither_bw
+from renderer import render_html, dither_spectra6, render_dashboard_raw, render_dashboard_raw_bw, dither_bw, render_dashboard_raw_solid
 from weather_provider import fetch_weather
 from url_renderer import get_page_binary, get_page_png, get_page_meta, start as start_url_renderer, list_pages, create_page, update_page, delete_page, rerender_page
 
@@ -426,6 +426,15 @@ def dashboard_bin():
     context["battery_info"] = battery_info
     raw = render_dashboard_raw("newspaper.html", context)
     return _etag_response(raw, "application/octet-stream")
+
+
+@app.route("/hoa.bin")
+def hoa_bin():
+    """HOA meeting sign — solid colors (no dither) for E1002, QR stays sharp.
+    Sets a 7-day refresh interval so the sign stays put in the box without
+    failing a health-check fetch and overwriting itself with an error screen."""
+    raw = render_dashboard_raw_solid("hoa-meeting.html")
+    return _etag_response(raw, "application/octet-stream", wifi_refresh_hours=168)
 
 
 @app.route("/dashboard-bw.bin")

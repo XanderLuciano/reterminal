@@ -19,6 +19,12 @@ pio-test/
 server/weather_cache.json
 server/*.png
 server/*.jpg
+server/*.bin
+server/*.doc
+
+# ── HOA meeting sign (generated + secrets) ──
+server/hoa_meeting.json
+server/templates/hoa-meeting.html
 
 # ── OS junk ──
 .DS_Store
